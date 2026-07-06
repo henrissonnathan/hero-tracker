@@ -1,4 +1,5 @@
 import 'star_rank.dart';
+import 'character_type.dart';
 
 /// Personagem/herói/tropa dentro de um [GameGroup].
 class Character {
@@ -10,6 +11,9 @@ class Character {
   final StarRank starRank;
   final DateTime createdAt;
 
+  /// Tipo da unidade: soldadoNormal, heroi ou comandante.
+  final CharacterType characterType;
+
   const Character({
     this.id,
     required this.groupId,
@@ -18,6 +22,7 @@ class Character {
     this.notes,
     StarRank? starRank,
     required this.createdAt,
+    this.characterType = CharacterType.soldadoNormal,
   }) : starRank = starRank ?? const StarRank();
 
   Character copyWith({
@@ -25,18 +30,21 @@ class Character {
     int? groupId,
     String? name,
     String? role,
+    bool clearRole = false,
     String? notes,
     StarRank? starRank,
     DateTime? createdAt,
+    CharacterType? characterType,
   }) =>
       Character(
         id: id ?? this.id,
         groupId: groupId ?? this.groupId,
         name: name ?? this.name,
-        role: role ?? this.role,
+        role: clearRole ? null : (role ?? this.role),
         notes: notes ?? this.notes,
         starRank: starRank ?? this.starRank,
         createdAt: createdAt ?? this.createdAt,
+        characterType: characterType ?? this.characterType,
       );
 
   Map<String, dynamic> toMap() => {
@@ -48,6 +56,7 @@ class Character {
         'starStars': starRank.stars,
         'starSubLevel': starRank.subLevel,
         'createdAt': createdAt.toIso8601String(),
+        'characterType': characterType.dbValue,
       };
 
   factory Character.fromMap(Map<String, dynamic> map) => Character(
@@ -61,5 +70,8 @@ class Character {
           subLevel: map['starSubLevel'] as int? ?? 0,
         ),
         createdAt: DateTime.parse(map['createdAt'] as String),
+        characterType:
+            CharacterTypeX.fromString(map['characterType'] as String?),
+        battleUses: map['battleUses'] as int?,
       );
 }

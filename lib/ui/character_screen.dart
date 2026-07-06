@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/character.dart';
 import '../models/character_stat.dart';
+import '../models/character_type.dart';
 import '../models/stat_type.dart';
 import '../models/star_rank.dart';
 import '../repositories/tracker_repository.dart';
@@ -193,10 +194,38 @@ class _HeaderCard extends StatelessWidget {
                     Text(character.name,
                         style: const TextStyle(
                             fontSize: 20, fontWeight: FontWeight.bold)),
-                    if (character.role != null)
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Text(character.characterType.emoji,
+                            style: const TextStyle(fontSize: 14)),
+                        const SizedBox(width: 4),
+                        Text(character.characterType.label,
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: character.characterType ==
+                                        CharacterType.heroi
+                                    ? Colors.amber.shade600
+                                    : character.characterType ==
+                                            CharacterType.comandante
+                                        ? Colors.blue.shade300
+                                        : Colors.grey.shade500,
+                                fontWeight: FontWeight.w600)),
+                        if (!character.characterType.entersBattle) ...[
+                          const SizedBox(width: 8),
+                          Text('· não entra em batalha',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade600)),
+                        ],
+                      ],
+                    ),
+                    if (character.role != null) ...[
+                      const SizedBox(height: 2),
                       Text(character.role!,
                           style: TextStyle(
                               color: Colors.grey.shade400, fontSize: 13)),
+                    ],
                   ],
                 ),
               ),
@@ -409,4 +438,24 @@ class _StatDialogState extends State<_StatDialog> {
               context,
               CharacterStat(
                 id: widget.initial?.id,
-             
+                characterId: widget.characterId,
+                name: _name.text.trim(),
+                type: _type,
+                value: v,
+                maxValue: _type == StatType.count ? mx : null,
+                triggerText: _type == StatType.trigger
+                    ? _trigger.text.trim()
+                    : null,
+                formulaText: _type == StatType.formula
+                    ? _formula.text.trim()
+                    : null,
+                sortOrder: widget.initial?.sortOrder ?? 0,
+              ),
+            );
+          },
+          child: const Text('Salvar'),
+        ),
+      ],
+    );
+  }
+}

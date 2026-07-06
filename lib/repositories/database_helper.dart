@@ -4,7 +4,7 @@ import 'package:path/path.dart';
 /// Helper de banco de dados SQLite para o Hero Tracker.
 class DatabaseHelper {
   static const _dbName = 'hero_tracker.db';
-  static const _dbVersion = 2;
+  static const _dbVersion = 3;
 
   DatabaseHelper._();
   static final DatabaseHelper instance = DatabaseHelper._();
@@ -30,26 +30,29 @@ class DatabaseHelper {
   Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
       CREATE TABLE game_groups (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        parentId    INTEGER,
-        name        TEXT NOT NULL,
-        description TEXT,
-        iconEmoji   TEXT DEFAULT '⚔️',
-        createdAt   TEXT NOT NULL,
+        id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+        parentId              INTEGER,
+        name                  TEXT NOT NULL,
+        description           TEXT,
+        iconEmoji             TEXT DEFAULT '⚔️',
+        createdAt             TEXT NOT NULL,
+        maxHeroesPerSquad     INTEGER,
+        maxCommandersPerSquad INTEGER,
         FOREIGN KEY (parentId) REFERENCES game_groups(id) ON DELETE CASCADE
       )
     ''');
 
     await db.execute('''
       CREATE TABLE characters (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        groupId      INTEGER NOT NULL,
-        name         TEXT NOT NULL,
-        role         TEXT,
-        notes        TEXT,
-        starStars    INTEGER DEFAULT 0,
-        starSubLevel INTEGER DEFAULT 0,
-        createdAt    TEXT NOT NULL,
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        groupId       INTEGER NOT NULL,
+        name          TEXT NOT NULL,
+        role          TEXT,
+        notes         TEXT,
+        starStars     INTEGER DEFAULT 0,
+        starSubLevel  INTEGER DEFAULT 0,
+        createdAt     TEXT NOT NULL,
+        characterType TEXT DEFAULT 'soldadoNormal',
         FOREIGN KEY (groupId) REFERENCES game_groups(id) ON DELETE CASCADE
       )
     ''');
@@ -72,7 +75,7 @@ class DatabaseHelper {
     ''');
   }
 
-  /// Executa PRAGMA para ativar FK cascade.
+  /// Executa migrações incrementais.
   Future<void> _onUpgrade(Database db, int oldV, int newV) async {
     if (oldV < 2) {
       // v1 → v2: parentId em game_groups, skill_nodes, formulaText em stats
@@ -81,6 +84,15 @@ class DatabaseHelper {
       await _createSkillNodesTable(db);
       await db.execute(
           'ALTER TABLE character_stats ADD COLUMN formulaText TEXT');
+    }
+    if (oldV < 3) {
+      // v2 → v3: characterType em characters; maxHeroes/maxCommanders em game_groups
+      await db.execute(
+          "ALTER TABLE characters ADD COLUMN characterType TEXT DEFAULT 'soldadoNormal'");
+      await db.execute(
+          'ALTER TABLE game_groups ADD COLUMN maxHeroesPerSquad INTEGER');
+      await db.execute(
+          'ALTER TABLE game_groups ADD COLUMN maxCommandersPerSquad INTEGER');
     }
   }
 
@@ -102,4 +114,8 @@ class DatabaseHelper {
     ''');
   }
 
-  F
+  Future<void> enableForeignKeys() async {
+    final db = await database;
+    await db.execute('PRAGMA foreign_keys = ON');
+  }
+}
