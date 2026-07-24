@@ -14,6 +14,9 @@ class Character {
   /// Tipo da unidade: soldadoNormal, heroi ou comandante.
   final CharacterType characterType;
 
+  /// Nível atual do personagem/herói (default: 1).
+  final int level;
+
   const Character({
     this.id,
     required this.groupId,
@@ -23,6 +26,7 @@ class Character {
     StarRank? starRank,
     required this.createdAt,
     this.characterType = CharacterType.soldadoNormal,
+    this.level = 1,
   }) : starRank = starRank ?? const StarRank();
 
   Character copyWith({
@@ -35,6 +39,7 @@ class Character {
     StarRank? starRank,
     DateTime? createdAt,
     CharacterType? characterType,
+    int? level,
   }) =>
       Character(
         id: id ?? this.id,
@@ -45,6 +50,7 @@ class Character {
         starRank: starRank ?? this.starRank,
         createdAt: createdAt ?? this.createdAt,
         characterType: characterType ?? this.characterType,
+        level: level ?? this.level,
       );
 
   Map<String, dynamic> toMap() => {
@@ -57,6 +63,7 @@ class Character {
         'starSubLevel': starRank.subLevel,
         'createdAt': createdAt.toIso8601String(),
         'characterType': characterType.dbValue,
+        'level': level,
       };
 
   factory Character.fromMap(Map<String, dynamic> map) => Character(
@@ -72,6 +79,6 @@ class Character {
         createdAt: DateTime.parse(map['createdAt'] as String),
         characterType:
             CharacterTypeX.fromString(map['characterType'] as String?),
-        battleUses: map['battleUses'] as int?,
+        level: map['level'] as int? ?? 1,
       );
 }

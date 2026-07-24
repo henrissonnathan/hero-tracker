@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import '../models/character.dart';
 import '../models/character_stat.dart';
 import '../models/character_type.dart';
-import '../models/stat_type.dart';
 import '../models/star_rank.dart';
 import '../repositories/tracker_repository.dart';
 import '../theme/app_theme.dart';
 import 'widgets/star_rank_display.dart';
 import 'widgets/stat_tile.dart';
+import 'widgets/stat_form_dialog.dart';
 
 class CharacterScreen extends StatefulWidget {
   final Character character;
@@ -49,29 +49,66 @@ class _CharacterScreenState extends State<CharacterScreen> {
   }
 
   Future<void> _addStat() async {
-    final result = await showDialog<CharacterStat>(
+    final result = await showDialog<StatFormResult>(
       context: context,
-      builder: (_) => _StatDialog(characterId: _character.id!),
+      builder: (_) => const StatFormDialog(title: 'Novo Status'),
     );
     if (result != null) {
       final saved = await TrackerRepository.instance.insertStat(
-          result.copyWith(sortOrder: _stats.length));
+        CharacterStat(
+          characterId: _character.id!,
+          name: result.name,
+          type: result.type,
+          value: result.value,
+          maxValue: result.maxValue,
+          triggerText: result.triggerText,
+          formulaText: result.formulaText,
+          sortOrder: _stats.length,
+        ),
+      );
       setState(() => _stats.add(saved));
     }
   }
 
   Future<void> _editStat(CharacterStat stat) async {
-    final result = await showDialog<CharacterStat>(
+    final result = await showDialog<StatFormResult>(
       context: context,
-      builder: (_) => _StatDialog(characterId: _character.id!, initial: stat),
+      builder: (_) => StatFormDialog(
+        title: 'Editar Status',
+        initial: StatFormResult(
+          name: stat.name,
+          type: stat.type,
+          value: stat.value,
+          maxValue: stat.maxValue,
+          triggerText: stat.triggerText,
+          formulaText: stat.formulaText,
+        ),
+      ),
     );
     if (result != null) {
-      await _updateStat(result);
+      await _updateStat(CharacterStat(
+        id: stat.id,
+        characterId: stat.characterId,
+        name: result.name,
+        type: result.type,
+        value: result.value,
+        maxValue: result.maxValue,
+        triggerText: result.triggerText,
+        formulaText: result.formulaText,
+        sortOrder: stat.sortOrder,
+      ));
     }
   }
 
   Future<void> _updateStarRank(StarRank rank) async {
     final updated = _character.copyWith(starRank: rank);
+    await TrackerRepository.instance.updateCharacter(updated);
+    setState(() => _character = updated);
+  }
+
+  Future<void> _updateLevel(int delta) async {
+    final newLevel = (_character.level + delta).clamp(1, 9999);
+    final updated = _character.copyWith(level: newLevel);
     await TrackerRepository.instance.updateCharacter(updated);
     setState(() => _character = updated);
   }
@@ -96,6 +133,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
                 SliverToBoxAdapter(child: _HeaderCard(
                   character: _character,
                   onStarChanged: _updateStarRank,
+                  onLevelChanged: _updateLevel,
                 )),
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
@@ -105,16 +143,6 @@ class _CharacterScreenState extends State<CharacterScreen> {
                         stat: stat,
                         onEdit: () => _editStat(stat),
                         onDelete: () => _deleteStat(stat),
-                        onIncrement: stat.type == StatType.count
-                            ? () => _updateStat(
-                                stat.copyWith(value: stat.value + 1))
-                            : null,
-                        onDecrement: stat.type == StatType.count
-                            ? () => _updateStat(
-                                stat.copyWith(value: (stat.value - 1).clamp(
-                                    0,
-                                    stat.maxValue ?? double.infinity)))
-                            : null,
                       );
                     },
                     childCount: _stats.length,
@@ -161,9 +189,13 @@ class _CharacterScreenState extends State<CharacterScreen> {
 class _HeaderCard extends StatelessWidget {
   final Character character;
   final void Function(StarRank) onStarChanged;
+  final void Function(int delta) onLevelChanged;
 
-  const _HeaderCard(
-      {required this.character, required this.onStarChanged});
+  const _HeaderCard({
+    required this.character,
+    required this.onStarChanged,
+    required this.onLevelChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -233,7 +265,38 @@ class _HeaderCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           StarRankDisplay(rank: character.starRank, maxStars: 10),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+          // Controles de nível
+          Row(
+            children: [
+              Text('Nível',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade500,
+                      fontWeight: FontWeight.w600)),
+              const Spacer(),
+              _RankButton(
+                label: '−',
+                tooltip: 'Diminuir nível',
+                onTap: character.level > 1 ? () => onLevelChanged(-1) : null,
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  '${character.level}',
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              _RankButton(
+                label: '+',
+                tooltip: 'Aumentar nível',
+                onTap: () => onLevelChanged(1),
+                highlight: true,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           // Controles de rank
           Row(
             children: [
@@ -304,158 +367,3 @@ class _RankButton extends StatelessWidget {
   }
 }
 
-// ─── Dialog para criar/editar status ─────────────────────────────────────────
-
-class _StatDialog extends StatefulWidget {
-  final int characterId;
-  final CharacterStat? initial;
-  const _StatDialog({required this.characterId, this.initial});
-
-  @override
-  State<_StatDialog> createState() => _StatDialogState();
-}
-
-class _StatDialogState extends State<_StatDialog> {
-  late TextEditingController _name;
-  late TextEditingController _value;
-  late TextEditingController _maxValue;
-  late TextEditingController _trigger;
-  late TextEditingController _formula;
-  StatType _type = StatType.count;
-
-  @override
-  void initState() {
-    super.initState();
-    final s = widget.initial;
-    _name = TextEditingController(text: s?.name ?? '');
-    _value = TextEditingController(
-        text: s != null ? s.value.toStringAsFixed(0) : '');
-    _maxValue = TextEditingController(
-        text: s?.maxValue != null
-            ? s!.maxValue!.toStringAsFixed(0)
-            : '');
-    _trigger = TextEditingController(text: s?.triggerText ?? '');
-    _formula = TextEditingController(text: s?.formulaText ?? '');
-    _type = s?.type ?? StatType.count;
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _value.dispose();
-    _maxValue.dispose();
-    _trigger.dispose();
-    _formula.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(
-          widget.initial == null ? 'Novo Status' : 'Editar Status'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _name,
-              decoration: const InputDecoration(
-                  labelText: 'Nome do status',
-                  border: OutlineInputBorder()),
-              autofocus: true,
-            ),
-            const SizedBox(height: 12),
-            // Tipo
-            SegmentedButton<StatType>(
-              segments: StatType.values
-                  .map((t) => ButtonSegment(
-                        value: t,
-                        label: Text(t.label,
-                            style: const TextStyle(fontSize: 11)),
-                      ))
-                  .toList(),
-              selected: {_type},
-              onSelectionChanged: (s) =>
-                  setState(() => _type = s.first),
-            ),
-            const SizedBox(height: 12),
-            if (_type == StatType.trigger)
-              TextField(
-                controller: _trigger,
-                decoration: const InputDecoration(
-                    labelText: 'Texto do gatilho',
-                    hintText: 'ex.: Ao atacar: +10% de dano',
-                    border: OutlineInputBorder()),
-                maxLines: 3,
-              )
-            else if (_type == StatType.formula)
-              TextField(
-                controller: _formula,
-                decoration: const InputDecoration(
-                    labelText: 'Fórmula',
-                    hintText: 'ex.: vitalidade × constituição',
-                    border: OutlineInputBorder()),
-                maxLines: 2,
-              )
-            else ...[
-              TextField(
-                controller: _value,
-                decoration: InputDecoration(
-                  labelText: _type == StatType.percent
-                      ? 'Valor (%)'
-                      : 'Valor',
-                  border: const OutlineInputBorder(),
-                ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-              ),
-              if (_type == StatType.count) ...[
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _maxValue,
-                  decoration: const InputDecoration(
-                      labelText: 'Valor máximo (opcional)',
-                      border: OutlineInputBorder()),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                ),
-              ],
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar')),
-        ElevatedButton(
-          onPressed: () {
-            if (_name.text.trim().isEmpty) return;
-            final v = double.tryParse(_value.text) ?? 0;
-            final mx = double.tryParse(_maxValue.text);
-            Navigator.pop(
-              context,
-              CharacterStat(
-                id: widget.initial?.id,
-                characterId: widget.characterId,
-                name: _name.text.trim(),
-                type: _type,
-                value: v,
-                maxValue: _type == StatType.count ? mx : null,
-                triggerText: _type == StatType.trigger
-                    ? _trigger.text.trim()
-                    : null,
-                formulaText: _type == StatType.formula
-                    ? _formula.text.trim()
-                    : null,
-                sortOrder: widget.initial?.sortOrder ?? 0,
-              ),
-            );
-          },
-          child: const Text('Salvar'),
-        ),
-      ],
-    );
-  }
-}

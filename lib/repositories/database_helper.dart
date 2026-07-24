@@ -1,10 +1,14 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
 /// Helper de banco de dados SQLite para o Hero Tracker.
 class DatabaseHelper {
   static const _dbName = 'hero_tracker.db';
-  static const _dbVersion = 3;
+  static const _dbVersion = 8;
 
   DatabaseHelper._();
   static final DatabaseHelper instance = DatabaseHelper._();
@@ -17,8 +21,18 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDb() async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, _dbName);
+    final String path;
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+      // Desktop: pasta de dados do app (%APPDATA%) — o default do FFI
+      // resolve relativo ao CWD e o banco "sumiria" conforme de onde
+      // o .exe é lançado.
+      final dir = await getApplicationSupportDirectory();
+      path = join(dir.path, _dbName);
+    } else {
+      // Android: caminho atual intocado (L1)
+      final dbPath = await getDatabasesPath();
+      path = join(dbPath, _dbName);
+    }
     return openDatabase(
       path,
       version: _dbVersion,
@@ -38,6 +52,8 @@ class DatabaseHelper {
         createdAt             TEXT NOT NULL,
         maxHeroesPerSquad     INTEGER,
         maxCommandersPerSquad INTEGER,
+        contentCategory       TEXT NOT NULL DEFAULT 'general',
+        iconImagePath         TEXT,
         FOREIGN KEY (parentId) REFERENCES game_groups(id) ON DELETE CASCADE
       )
     ''');
@@ -53,6 +69,7 @@ class DatabaseHelper {
         starSubLevel  INTEGER DEFAULT 0,
         createdAt     TEXT NOT NULL,
         characterType TEXT DEFAULT 'soldadoNormal',
+        level         INTEGER NOT NULL DEFAULT 1,
         FOREIGN KEY (groupId) REFERENCES game_groups(id) ON DELETE CASCADE
       )
     ''');
@@ -73,6 +90,8 @@ class DatabaseHelper {
         FOREIGN KEY (characterId) REFERENCES characters(id) ON DELETE CASCADE
       )
     ''');
+
+    await _createGroupStatTemplatesTable(db);
   }
 
   /// Executa migrações incrementais.
@@ -94,6 +113,60 @@ class DatabaseHelper {
       await db.execute(
           'ALTER TABLE game_groups ADD COLUMN maxCommandersPerSquad INTEGER');
     }
+    if (oldV < 4) {
+      // v3 → v4: level em characters; contentCategory em game_groups
+      await db.execute(
+          'ALTER TABLE characters ADD COLUMN level INTEGER NOT NULL DEFAULT 1');
+      await db.execute(
+          "ALTER TABLE game_groups ADD COLUMN contentCategory TEXT NOT NULL DEFAULT 'general'");
+    }
+    if (oldV < 5) {
+      // v4 → v5: foto interna como ícone do grupo (opcional)
+      await db.execute(
+          'ALTER TABLE game_groups ADD COLUMN iconImagePath TEXT');
+    }
+    if (oldV < 6) {
+      // v5 → v6: templates de estatística no nível do grupo — todo
+      // personagem novo do grupo nasce com esses stats copiados.
+      await _createGroupStatTemplatesTable(db);
+    }
+    if (oldV < 7) {
+      // v6 → v7: categoria opcional para classificar/agrupar os templates.
+      // Guarda contra coluna duplicada: um DB vindo de v5 nesta MESMA execução
+      // já ganha a coluna via _createGroupStatTemplatesTable (que agora cria v7).
+      final cols =
+          await db.rawQuery('PRAGMA table_info(group_stat_templates)');
+      final hasCategory = cols.any((c) => c['name'] == 'category');
+      if (!hasCategory) {
+        await db.execute(
+            'ALTER TABLE group_stat_templates ADD COLUMN category TEXT');
+      }
+    }
+    if (oldV < 8) {
+      // v7 → v8: "Contagem" foi removida — dados existentes viram "Número".
+      await db.execute(
+          "UPDATE character_stats SET type = 'number' WHERE type = 'count'");
+      await db.execute(
+          "UPDATE group_stat_templates SET type = 'number' WHERE type = 'count'");
+    }
+  }
+
+  Future<void> _createGroupStatTemplatesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS group_stat_templates (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        groupId      INTEGER NOT NULL,
+        name         TEXT NOT NULL,
+        type         TEXT NOT NULL,
+        defaultValue REAL DEFAULT 0,
+        maxValue     REAL,
+        triggerText  TEXT,
+        formulaText  TEXT,
+        sortOrder    INTEGER DEFAULT 0,
+        category     TEXT,
+        FOREIGN KEY (groupId) REFERENCES game_groups(id) ON DELETE CASCADE
+      )
+    ''');
   }
 
   Future<void> _createSkillNodesTable(Database db) async {
