@@ -12,8 +12,8 @@ triggers: [teste, test, flutter-test, cobertura, mock, FFI, verde, vermelho, bat
 # TEST — Hero Tracker Testes
 
 ## Escopo deste chat
-Mantenha e expanda a **bateria de testes**. Estado em 2026-09-29: 51 testes
-verdes (commit e6fc3ce). Antes de entregar: ≥ contagem anterior e todos verdes.
+Mantenha e expanda a **bateria de testes**. Estado em 2026-09-29: 67 testes (71 execuções: tap_target roda em Android e Windows)
+verdes (sprint acessibilidade + criação de card; 51 no commit e6fc3ce). Antes de entregar: ≥ contagem anterior e todos verdes.
 Teste vermelho: diagnosticar → corrigir → re-rodar, no máximo 3 voltas; na
 3ª sem sucesso, pare e devolva ao CENT com o diagnóstico (anti-loop).
 
@@ -33,7 +33,7 @@ não conserte aqui: escreva o teste que prova o bug e devolva ao CENT.
 - Nunca "conserte" um teste afrouxando o assert para passar: primeiro decida
   se o CÓDIGO ou o TESTE está errado (debugging root-cause)
 
-## Arquivos (13)
+## Arquivos (17)
 | arquivo | cobre |
 |---|---|
 | widget_test | app real abre; GroupIcon; StatsScreen por categoria |
@@ -47,6 +47,10 @@ não conserte aqui: escreva o teste que prova o bug e devolva ao CENT.
 | group_stat_template_test | herança, cópia, FK, habilidades |
 | seed_service_test | exemplo RoK coerente, refazer não empilha |
 | unit_type_label_test | nomes dos tipos por jogo, herança |
+| character_create_test | criar herói pela tela: Enter, nome vazio/repetido, "Criar outro", modelo |
+| character_type_suggestion_test | tipo sugerido (mais comum / categoria / empate) |
+| option_card_test | OptionCard, EmojiChoice, ⋮ + confirmDelete |
+| tap_target_test | TODO botão >= 48×48 em 4 telas (mede cada um) |
 | tests_info_test | tela de testes + CONTA os testes |
 | test_helpers | `pumpUntilFound` / `pumpUntilGone` |
 
@@ -115,6 +119,16 @@ tearDownAll(() { try { tempDir.deleteSync(recursive: true); } catch (_) {} });
   `find.bySemanticsLabel` não acha — use `find.byType(<Widget>)` (E29).
   Só funciona quando o próprio botão tem `excludeSemantics: true`.
 - Layout em colunas: compare posição real (`tester.getTopLeft`), não só existência.
+- `pumpAndSettle` estoura ("timed out") se a tela ainda mostra o spinner de
+  carregamento (anima para sempre): antes, `pumpUntilGone(tester,
+  find.byType(CircularProgressIndicator))`.
+- Alvo de toque: `meetsGuideline(androidTapTargetGuideline)` é CEGO a botão
+  pequeno dentro de card/linha clicável (nó fundido). Meça cada botão
+  (`todosComAlvo48` em tap_target_test) — tela nova entra lá.
+- Semântica: `hasFlag`/`containsSemantics` estão deprecados (analyze
+  --fatal-infos reprova) — use `isSemantics(label:, isSelected:, ...)`.
+- Mesmo tooltip em dois botões (ex.: "+" da AppBar e FAB) → `find.byTooltip`
+  ambíguo; ache pelo tipo (`find.byType(FloatingActionButton)`).
 
 ## Checklist de novo teste
 - Nome descreve o comportamento esperado, em português

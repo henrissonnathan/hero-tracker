@@ -163,6 +163,45 @@ class TestsInfo {
       TestItem('Sem nome não salva e o aviso aparece no próprio campo',
           'Status sem nome na lista'),
     ]),
+    TestGroup('➕', 'Criar herói pela tela', 'character_create_test.dart', [
+      TestItem('Enter cria com o tipo já sugerido e abre a tela do herói, '
+          'com os status do modelo',
+          'Ter que tocar no tipo e no card toda vez'),
+      TestItem('Nome vazio ou repetido: aviso no próprio campo e nada gravado',
+          'Herói sem nome ou dois com o mesmo nome'),
+      TestItem('"Criar outro" grava, avisa, mantém o tipo e volta o foco '
+          'no nome', 'Abrir e fechar o dialog para cada herói'),
+      TestItem('Editar herói com nome repetido ANTIGO salva sem trocar o nome',
+          'Herói antigo que não dá mais para editar'),
+      TestItem('"Nenhum" no modelo: o herói nasce sem status',
+          'Caixinhas que não valem na hora de criar'),
+    ]),
+    TestGroup('🎯', 'Tipo sugerido', 'character_type_suggestion_test.dart', [
+      TestItem('Grupo vazio: Heróis sugere herói, o resto sugere soldado',
+          'Tipo errado já marcado no primeiro herói'),
+      TestItem('O tipo mais comum no grupo vence', 'Sugestão que ignora o jogo'),
+      TestItem('Empate: vale o da categoria', 'Sugestão que muda sozinha'),
+    ]),
+    TestGroup('🧩', 'Padrões de tela', 'option_card_test.dart', [
+      TestItem('Cartão de escolha: toque (dedo e leitor de tela) escolhe, '
+          'fala "selecionado", 48×48',
+          'Opção que o leitor de tela anuncia mas não escolhe'),
+      TestItem('Cartão de escolha pelo teclado: Tab chega e Enter escolhe',
+          'Opção que o teclado do PC não alcança'),
+      TestItem('Ícone de emoji é um quadrado de 48×48', 'Emoji difícil de acertar'),
+      TestItem('⋮ mostra Editar/Apagar e Apagar sempre pede confirmação',
+          'Apagar sem querer com um toque'),
+    ]),
+    TestGroup('👆', 'Tamanho dos botões', 'tap_target_test.dart', [
+      TestItem('Tela do jogo e dialog de criação: todo botão >= 48×48 '
+          '(tema real, no Android e no Windows)',
+          'Botão pequeno demais para o dedo — ou só no PC'),
+      TestItem('Tela do herói (status, habilidade, estrelas): >= 48×48',
+          'Errar o toque e editar a coisa errada'),
+      TestItem('Árvore, inclusive a bolinha de desbloquear: >= 48×48',
+          'Desbloquear o nó errado'),
+      TestItem('Tela de estatísticas: >= 48×48', 'Menu ⋮ difícil de acertar'),
+    ]),
     TestGroup('🧪', 'Esta própria tela', 'tests_info_test.dart', [
       TestItem('A tela de testes abre e mostra os blocos',
           'Esta tela quebrar sem ninguém ver'),
@@ -188,12 +227,11 @@ class TestsInfo {
         'É a parte de segurança; hoje só é testada por você abrindo o app'),
     TestIdea('B', 'Toggle de habilidade NA TELA: ligar e ver o número mudar',
         'É o efeito que você mais olha (hoje testo só o dado)'),
-    TestIdea('C', 'Criar herói pela tela com as caixinhas marcadas',
-        'É o caminho que mais se usa no dia a dia'),
     TestIdea('D', 'Exportar para arquivo de verdade',
         'Fecha o último buraco do backup (hoje testo o conteúdo)'),
-    TestIdea('E', 'Tela da árvore de habilidades',
-        'Ainda sem nenhum teste de tela'),
+    TestIdea('E', 'Tela da árvore de habilidades: desbloquear e criar '
+        'sub-habilidade pela tela',
+        'Hoje só o tamanho dos botões dela é testado'),
   ];
 
   /// Total de testes automáticos descritos aqui.
@@ -288,7 +326,7 @@ class TestsInfoScreen extends StatelessWidget {
                   const SizedBox(height: 8),
                   const Text(
                     'Algum teste acima é desnecessário? Falta algo que te dá '
-                    'medo de quebrar? Quais das ideias A–E você quer? '
+                    'medo de quebrar? Quais das ideias (A, B, D, E) você quer? '
                     'É só me falar — o que você apontar vira teste.',
                     style: TextStyle(fontSize: 13, height: 1.4),
                   ),

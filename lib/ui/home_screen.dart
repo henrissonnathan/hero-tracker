@@ -8,6 +8,8 @@ import '../services/seed_service.dart';
 import 'game_screen.dart';
 import 'tests_info_screen.dart';
 import 'widgets/group_icon.dart';
+import 'widgets/item_actions.dart';
+import 'widgets/option_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -149,23 +151,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _deleteGroup(GameGroup group) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Deletar grupo'),
-        content: Text('Deletar "${group.name}" e todos os personagens?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Deletar',
-                  style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-    if (ok == true) {
+    final ok = await confirmDelete(context,
+        itemName: group.name,
+        detalhe: 'Os sub-grupos, personagens, status e fotos vão junto.');
+    if (ok) {
       await TrackerRepository.instance.deleteGroup(group.id!);
       IconImageStore.deleteIcon(group.iconImagePath);
       setState(() => _groups.removeWhere((g) => g.id == group.id));
@@ -277,18 +266,10 @@ class _GroupCard extends StatelessWidget {
                 style: TextStyle(color: Colors.grey.shade400, fontSize: 12))
             : null,
         onTap: onTap,
-        trailing: PopupMenuButton<String>(
-          onSelected: (v) {
-            if (v == 'edit') onEdit();
-            if (v == 'delete') onDelete();
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'edit', child: Text('Editar')),
-            PopupMenuItem(
-                value: 'delete',
-                child: Text('Deletar',
-                    style: TextStyle(color: Colors.red))),
-          ],
+        trailing: ItemActionsMenu(
+          itemName: group.name,
+          onEdit: onEdit,
+          onDelete: onDelete,
         ),
       ),
     );
@@ -336,6 +317,7 @@ class _GroupDialog extends StatefulWidget {
 
 class _GroupDialogState extends State<_GroupDialog> {
   late TextEditingController _name;
+  String? _nameError;
   late TextEditingController _desc;
   String _emoji = '⚔️';
   String? _imagePath;
@@ -401,6 +383,31 @@ class _GroupDialogState extends State<_GroupDialog> {
     }
   }
 
+  /// Ação principal (botão e Enter no nome). Nome vazio → aviso no campo.
+  void _salvar() {
+    if (_name.text.trim().isEmpty) {
+      setState(() => _nameError = 'Dê um nome ao grupo');
+      return;
+    }
+    // Foto salva sai da lista de limpeza do dispose.
+    if (_imagePath != null) _imported.remove(_imagePath);
+    Navigator.pop(
+      context,
+      (widget.initial ?? GameGroup(
+                  name: '', createdAt: DateTime.now()))
+              .copyWith(
+        name: _name.text.trim(),
+        description: _desc.text.trim().isEmpty
+            ? null
+            : _desc.text.trim(),
+        clearDescription: _desc.text.trim().isEmpty,
+        iconEmoji: _emoji,
+        iconImagePath: _imagePath,
+        clearIconImage: _imagePath == null,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -412,27 +419,17 @@ class _GroupDialogState extends State<_GroupDialog> {
           children: [
             Wrap(
               spacing: 8,
+              runSpacing: 8,
               children: _emojis
-                  .map((e) => GestureDetector(
+                  .map((e) => EmojiChoice(
+                        emoji: e,
+                        // com foto ativa, nenhum emoji parece escolhido
+                        selected: e == _emoji && _imagePath == null,
                         // escolher emoji desmarca a foto
                         onTap: () => setState(() {
                           _emoji = e;
                           _imagePath = null;
                         }),
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                                // com foto ativa, nenhum emoji parece escolhido
-                                color: e == _emoji && _imagePath == null
-                                    ? Theme.of(context).colorScheme.primary
-                                    : Colors.transparent,
-                                width: 2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(e,
-                              style: const TextStyle(fontSize: 22)),
-                        ),
                       ))
                   .toList(),
             ),
@@ -467,9 +464,16 @@ class _GroupDialogState extends State<_GroupDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: _name,
-              decoration: const InputDecoration(
-                  labelText: 'Nome do grupo', border: OutlineInputBorder()),
+              decoration: InputDecoration(
+                  labelText: 'Nome do grupo',
+                  border: const OutlineInputBorder(),
+                  errorText: _nameError),
               autofocus: true,
+              textInputAction: TextInputAction.done,
+              onChanged: (_) {
+                if (_nameError != null) setState(() => _nameError = null);
+              },
+              onSubmitted: (_) => _salvar(),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -485,28 +489,10 @@ class _GroupDialogState extends State<_GroupDialog> {
         TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancelar')),
-        ElevatedButton(
-          onPressed: () {
-            if (_name.text.trim().isEmpty) return;
-            // Foto salva sai da lista de limpeza do dispose.
-            if (_imagePath != null) _imported.remove(_imagePath);
-            Navigator.pop(
-              context,
-              (widget.initial ?? GameGroup(
-                          name: '', createdAt: DateTime.now()))
-                      .copyWith(
-                name: _name.text.trim(),
-                description: _desc.text.trim().isEmpty
-                    ? null
-                    : _desc.text.trim(),
-                clearDescription: _desc.text.trim().isEmpty,
-                iconEmoji: _emoji,
-                iconImagePath: _imagePath,
-                clearIconImage: _imagePath == null,
-              ),
-            );
-          },
-          child: const Text('Salvar'),
+        FilledButton.icon(
+          onPressed: _salvar,
+          icon: const Icon(Icons.check),
+          label: const Text('Salvar'),
         ),
       ],
     );

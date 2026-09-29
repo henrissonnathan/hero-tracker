@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/stat_type.dart';
+import 'option_card.dart';
 import 'stat_type_visual.dart';
 
 /// Formata um valor numérico sem casas decimais desnecessárias, mas sem
@@ -332,54 +333,39 @@ class _StatFormDialogState extends State<StatFormDialog> {
   Widget _cartaoTipo(_TipoInfo t) {
     final cs = Theme.of(context).colorScheme;
     final sel = _type == t.type;
-    return Semantics(
-      button: true,
+    return OptionCard(
       selected: sel,
-      label: '${t.type.label}. ${t.explica}. Exemplo: ${t.exemplo}',
-      excludeSemantics: true,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: () => _escolherTipo(t.type),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          constraints: const BoxConstraints(minHeight: 72),
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: sel ? cs.primary.withValues(alpha: 0.15) : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-                color: sel ? cs.primary : cs.outlineVariant,
-                width: sel ? 2 : 1),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+      semanticLabel: '${t.type.label}. ${t.explica}. Exemplo: ${t.exemplo}',
+      onTap: () => _escolherTipo(t.type),
+      padding: const EdgeInsets.all(10),
+      alignment: Alignment.topLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  StatTypeBadge(t.type, size: 26),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(t.type.label,
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight:
-                                sel ? FontWeight.bold : FontWeight.w600)),
-                  ),
-                  if (sel) Icon(Icons.check_circle, size: 18, color: cs.primary),
-                ],
+              StatTypeBadge(t.type, size: 26),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(t.type.label,
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight:
+                            sel ? FontWeight.bold : FontWeight.w600)),
               ),
-              const SizedBox(height: 4),
-              Text(t.explica,
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-              Text('ex.: ${t.exemplo}',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                      color: cs.onSurfaceVariant)),
+              if (sel) Icon(Icons.check_circle, size: 18, color: cs.primary),
             ],
           ),
-        ),
+          const SizedBox(height: 4),
+          Text(t.explica,
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+          Text('ex.: ${t.exemplo}',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  color: cs.onSurfaceVariant)),
+        ],
       ),
     );
   }
@@ -451,6 +437,8 @@ class _StatFormDialogState extends State<StatFormDialog> {
                   child: Semantics(
                     button: true,
                     label: op.value,
+                    // excludeSemantics apaga a ação do botão: devolve aqui.
+                    onTap: () => _inserirNaFormula(op.key),
                     excludeSemantics: true,
                     child: SizedBox(
                       width: 48,

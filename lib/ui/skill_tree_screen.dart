@@ -3,6 +3,8 @@ import '../models/game_group.dart';
 import '../models/skill_node.dart';
 import '../repositories/tracker_repository.dart';
 import '../theme/app_theme.dart';
+import 'widgets/item_actions.dart';
+import 'widgets/option_card.dart';
 
 /// Tela da árvore de habilidades de um grupo.
 ///
@@ -79,25 +81,14 @@ class _SkillTreeScreenState extends State<SkillTreeScreen> {
   }
 
   Future<void> _deleteNode(SkillNode node) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Remover habilidade'),
-        content: Text('Remover "${node.name}"?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Remover',
-                  style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-    if (ok == true) {
+    final ok = await confirmDelete(context,
+        itemName: node.name,
+        detalhe: 'As sub-habilidades dela ficam soltas, no primeiro nível.');
+    if (ok) {
       await TrackerRepository.instance.deleteSkillNode(node.id!);
-      setState(() => _nodes.removeWhere((n) => n.id == node.id));
+      // As sub-habilidades viram raiz no banco (FK SET NULL) — recarregar
+      // faz a tela mostrar isso, em vez de sumir com elas até reabrir.
+      await _load();
     }
   }
 
@@ -241,25 +232,45 @@ class _NodeCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
-            GestureDetector(
+            Semantics(
+              container: true,
+              button: true,
+              toggled: unlocked,
+              label: unlocked ? 'Desbloqueada' : 'Bloqueada',
               onTap: onToggle,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: unlocked
-                      ? AppTheme.gold.withValues(alpha:0.25)
-                      : Colors.grey.withValues(alpha:0.15),
-                  border: Border.all(
-                    color: unlocked ? AppTheme.gold : Colors.grey.shade600,
-                    width: 2,
+              excludeSemantics: true,
+              child: Tooltip(
+                message: unlocked ? 'Bloquear' : 'Desbloquear',
+                child: InkResponse(
+                  onTap: onToggle,
+                  radius: 24,
+                  child: SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Center(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: unlocked
+                              ? AppTheme.gold.withValues(alpha: 0.25)
+                              : Colors.grey.withValues(alpha: 0.15),
+                          border: Border.all(
+                            color: unlocked
+                                ? AppTheme.gold
+                                : Colors.grey.shade600,
+                            width: 2,
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(node.iconEmoji,
+                              style: const TextStyle(fontSize: 16)),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-                child: Center(
-                  child: Text(node.iconEmoji,
-                      style: const TextStyle(fontSize: 16)),
                 ),
               ),
             ),
@@ -296,13 +307,12 @@ class _NodeCard extends StatelessWidget {
               icon: const Icon(Icons.add, size: 16),
               onPressed: onAddChild,
               tooltip: 'Adicionar sub-habilidade',
-              visualDensity: VisualDensity.compact,
               color: Colors.grey.shade500,
             ),
             IconButton(
               icon: const Icon(Icons.close, size: 16),
+              tooltip: 'Apagar "${node.name}"',
               onPressed: onDelete,
-              visualDensity: VisualDensity.compact,
               color: Colors.red.shade300,
             ),
           ],
@@ -357,6 +367,7 @@ class _SkillNodeDialog extends StatefulWidget {
 
 class _SkillNodeDialogState extends State<_SkillNodeDialog> {
   late TextEditingController _name;
+  String? _nameError;
   late TextEditingController _desc;
   late TextEditingController _cost;
   String _emoji = '🔷';
@@ -382,6 +393,27 @@ class _SkillNodeDialogState extends State<_SkillNodeDialog> {
     super.dispose();
   }
 
+  /// Ação principal (botão e Enter no nome). Nome vazio → aviso no campo.
+  void _salvar() {
+    if (_name.text.trim().isEmpty) {
+      setState(() => _nameError = 'Dê um nome à habilidade');
+      return;
+    }
+    Navigator.pop(
+      context,
+      SkillNode(
+        groupId: widget.groupId,
+        parentId: widget.parentId,
+        name: _name.text.trim(),
+        description: _desc.text.trim().isEmpty
+            ? null
+            : _desc.text.trim(),
+        iconEmoji: _emoji,
+        costPoints: int.tryParse(_cost.text) ?? 1,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -396,31 +428,27 @@ class _SkillNodeDialogState extends State<_SkillNodeDialog> {
               spacing: 6,
               runSpacing: 6,
               children: _emojis
-                  .map((e) => GestureDetector(
+                  .map((e) => EmojiChoice(
+                        emoji: e,
+                        selected: e == _emoji,
+                        fontSize: 20,
                         onTap: () => setState(() => _emoji = e),
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: e == _emoji
-                                  ? Theme.of(context).colorScheme.primary
-                                  : Colors.transparent,
-                              width: 2,
-                            ),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(e,
-                              style: const TextStyle(fontSize: 20)),
-                        ),
                       ))
                   .toList(),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _name,
-              decoration: const InputDecoration(
-                  labelText: 'Nome', border: OutlineInputBorder()),
+              decoration: InputDecoration(
+                  labelText: 'Nome',
+                  border: const OutlineInputBorder(),
+                  errorText: _nameError),
               autofocus: true,
+              textInputAction: TextInputAction.done,
+              onChanged: (_) {
+                if (_nameError != null) setState(() => _nameError = null);
+              },
+              onSubmitted: (_) => _salvar(),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -445,24 +473,10 @@ class _SkillNodeDialogState extends State<_SkillNodeDialog> {
         TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancelar')),
-        ElevatedButton(
-          onPressed: () {
-            if (_name.text.trim().isEmpty) return;
-            Navigator.pop(
-              context,
-              SkillNode(
-                groupId: widget.groupId,
-                parentId: widget.parentId,
-                name: _name.text.trim(),
-                description: _desc.text.trim().isEmpty
-                    ? null
-                    : _desc.text.trim(),
-                iconEmoji: _emoji,
-                costPoints: int.tryParse(_cost.text) ?? 1,
-              ),
-            );
-          },
-          child: const Text('Criar'),
+        FilledButton.icon(
+          onPressed: _salvar,
+          icon: const Icon(Icons.check),
+          label: const Text('Criar'),
         ),
       ],
     );

@@ -2,16 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  static ThemeData get dark => ThemeData(
+  /// Tema do app (fonte Nunito via google_fonts).
+  static ThemeData get dark =>
+      buildDark(textTheme: GoogleFonts.nunitoTextTheme(ThemeData.dark().textTheme));
+
+  /// O MESMO tema, com a fonte opcional — gancho de teste: o teste roda sem
+  /// rede (sem GoogleFonts) mas precisa das outras regras do tema de verdade.
+  static ThemeData buildDark({TextTheme? textTheme}) => ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFFFFB700),
           brightness: Brightness.dark,
         ),
-        textTheme: GoogleFonts.nunitoTextTheme(
-          ThemeData.dark().textTheme,
-        ),
+        textTheme: textTheme,
+        // No Windows o Flutter usa por padrão botões compactos e área de toque
+        // encolhida (shrinkWrap). Fixamos o tamanho de celular: alvo 48×48 em
+        // toda plataforma, e o PC mostra o app como ele será no celular.
+        materialTapTargetSize: MaterialTapTargetSize.padded,
+        visualDensity: VisualDensity.standard,
         cardTheme: CardThemeData(
           elevation: 0,
           shape: RoundedRectangleBorder(

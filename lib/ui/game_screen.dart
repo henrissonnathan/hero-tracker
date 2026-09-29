@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/game_group.dart';
 import '../models/character.dart';
 import '../models/character_type.dart';
+import '../models/character_type_suggestion.dart';
 import '../models/content_category.dart';
 import '../models/group_stat_template.dart';
 import '../models/stat_type.dart';
@@ -13,7 +14,10 @@ import 'character_screen.dart';
 import 'skill_tree_screen.dart';
 import 'stats_screen.dart';
 import 'widgets/group_icon.dart';
+import 'widgets/item_actions.dart';
+import 'widgets/option_card.dart';
 import 'widgets/star_rank_display.dart';
+import 'widgets/stat_type_visual.dart';
 
 class GameScreen extends StatefulWidget {
   final GameGroup group;
@@ -144,38 +148,61 @@ class _GameScreenState extends State<GameScreen> {
     _load();
   }
 
+  /// Abre a tela do personagem e recarrega ao voltar (ele muda lá dentro).
+  Future<void> _openCharacter(Character c) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => CharacterScreen(character: c)),
+    );
+    _load();
+  }
+
+  /// Grava um personagem novo: nasce com os status marcados nas caixinhas
+  /// (padrão: todos os do modelo) e entra na lista na hora.
+  Future<Character> _saveNewCharacter(
+      Character c, Set<int>? templateIds) async {
+    // Transação única: se um insert falha, nada fica gravado pela metade.
+    final saved = await TrackerRepository.instance
+        .insertCharacterWithTemplates(c, onlyTemplateIds: templateIds);
+    if (mounted) setState(() => _characters.add(saved));
+    return saved;
+  }
+
   Future<void> _addCharacter() async {
+    // Antes de carregar, modelo e nomes existentes ainda estão vazios: o
+    // personagem nasceria sem status e a checagem de nome repetido falharia.
+    if (_loading) return;
     // Modelo efetivo: os do grupo, ou os herdados do ancestral.
     final effective =
         _templates.isNotEmpty ? _templates : _inheritedTemplates;
-    Set<int>? chosen;
-    final result = await showDialog<Character>(
+    final criado = await showDialog<Character>(
       context: context,
       builder: (_) => _CharacterDialog(
         groupId: _group.id!,
         templates: effective,
         names: _typeNames,
-        onTemplateSelection: (ids) => chosen = ids,
+        initialType: suggestCharacterType(
+            _characters.map((c) => c.characterType), _group.contentCategory),
+        takenNames: _characters.map((c) => c.name).toList(),
+        onCreate: _saveNewCharacter,
       ),
     );
-    if (result != null) {
-      final saved =
-          await TrackerRepository.instance.insertCharacter(result);
-      // Personagem novo nasce com os stats marcados nas caixinhas
-      // (padrão: todos os do modelo).
-      await TrackerRepository.instance.applyGroupTemplatesToCharacter(
-        saved,
-        onlyTemplateIds: chosen,
-      );
-      setState(() => _characters.add(saved));
-    }
+    // "Criar e abrir": o dialog já gravou — abre direto para preencher.
+    if (criado != null && mounted) await _openCharacter(criado);
   }
 
   Future<void> _editCharacter(Character c) async {
     final result = await showDialog<Character>(
       context: context,
-      builder: (_) =>
-          _CharacterDialog(groupId: _group.id!, initial: c, names: _typeNames),
+      builder: (_) => _CharacterDialog(
+        groupId: _group.id!,
+        initial: c,
+        names: _typeNames,
+        takenNames: _characters
+            .where((x) => x.id != c.id)
+            .map((x) => x.name)
+            .toList(),
+      ),
     );
     if (result != null) {
       await TrackerRepository.instance.updateCharacter(result);
@@ -192,23 +219,10 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<void> _deleteCharacter(Character c) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Deletar personagem'),
-        content: Text('Deletar "${c.name}"?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Deletar',
-                  style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-    if (ok == true) {
+    final ok = await confirmDelete(context,
+        itemName: c.name,
+        detalhe: 'Os status, as habilidades e a foto vão junto.');
+    if (ok) {
       await TrackerRepository.instance.deleteCharacter(c.id!);
       IconImageStore.deleteIcon(c.iconImagePath);
       setState(() => _characters.removeWhere((x) => x.id == c.id));
@@ -418,16 +432,7 @@ class _GameScreenState extends State<GameScreen> {
                     (i) => _CharacterCard(
                       character: _characters[i],
                       names: _typeNames,
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                CharacterScreen(character: _characters[i]),
-                          ),
-                        );
-                        _load();
-                      },
+                      onTap: () => _openCharacter(_characters[i]),
                       onEdit: () => _editCharacter(_characters[i]),
                       onDelete: () => _deleteCharacter(_characters[i]),
                     ),
@@ -436,6 +441,7 @@ class _GameScreenState extends State<GameScreen> {
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addCharacter,
+        tooltip: 'Novo personagem',
         child: const Icon(Icons.person_add),
       ),
     );
@@ -713,26 +719,10 @@ class _CharacterCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                    onPressed: onEdit,
-                    color: Colors.grey.shade400,
-                    padding: EdgeInsets.zero,
-                    constraints:
-                        const BoxConstraints(minWidth: 32, minHeight: 32),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    onPressed: onDelete,
-                    color: Colors.red.shade300,
-                    padding: EdgeInsets.zero,
-                    constraints:
-                        const BoxConstraints(minWidth: 32, minHeight: 32),
-                  ),
-                ],
+              ItemActionsMenu(
+                itemName: character.name,
+                onEdit: onEdit,
+                onDelete: onDelete,
               ),
             ],
           ),
@@ -825,19 +815,33 @@ class _CharacterDialog extends StatefulWidget {
   /// Nomes dos tipos neste jogo (o seletor de tipo usa eles).
   final UnitTypeNames names;
 
-  /// Status do modelo do grupo (efetivos) — exibidos com caixinhas na CRIAÇÃO
-  /// para escolher quais o personagem terá. Vazio/edição: seção não aparece.
+  /// Status do modelo do grupo (efetivos) — escolhidos na CRIAÇÃO (todos
+  /// marcados por padrão). Vazio/edição: a seção não aparece.
   final List<GroupStatTemplate> templates;
 
-  /// Chamado ao Criar com os ids dos templates marcados.
-  final void Function(Set<int> ids)? onTemplateSelection;
+  /// Tipo já marcado ao criar (`suggestCharacterType`): quase nunca o dono
+  /// precisa tocar no tipo.
+  final CharacterType initialType;
+
+  /// Nomes que já existem no grupo — repetido é bloqueado com aviso (o
+  /// pacote JSON acha o personagem pelo nome). Na edição, sem o próprio.
+  final List<String> takenNames;
+
+  /// Criação: grava o personagem com os status marcados e devolve o salvo.
+  /// A tela cuida do banco e da lista; o dialog decide se fecha ("Criar e
+  /// abrir") ou continua aberto ("Criar outro").
+  /// [templateIds] null = todos os do modelo.
+  final Future<Character> Function(Character c, Set<int>? templateIds)?
+      onCreate;
 
   const _CharacterDialog({
     required this.groupId,
     this.initial,
     this.names = UnitTypeNames.padrao,
     this.templates = const [],
-    this.onTemplateSelection,
+    this.initialType = CharacterType.soldadoNormal,
+    this.takenNames = const [],
+    this.onCreate,
   });
 
   @override
@@ -847,27 +851,38 @@ class _CharacterDialog extends StatefulWidget {
 class _CharacterDialogState extends State<_CharacterDialog> {
   late TextEditingController _name;
   late TextEditingController _role;
+  final FocusNode _nameFocus = FocusNode();
   late CharacterType _type;
   late Set<int> _selectedTemplateIds;
+  late Set<String> _taken;
 
   String? _imagePath;
   bool _importing = false;
+  bool _saving = false;
   String? _pickError;
+  String? _nameError;
+  String? _saveError;
+
+  /// Nomes criados com "Criar outro" nesta abertura do dialog (feedback).
+  final List<String> _criados = [];
 
   /// PNGs internos criados por ESTE dialog — os que não forem salvos são
   /// apagados no dispose (cancelar, fechar, trocar de foto).
   final List<String> _imported = [];
+
+  bool get _isEdit => widget.initial != null;
 
   @override
   void initState() {
     super.initState();
     _name = TextEditingController(text: widget.initial?.name ?? '');
     _role = TextEditingController(text: widget.initial?.role ?? '');
-    _type = widget.initial?.characterType ?? CharacterType.soldadoNormal;
+    _type = widget.initial?.characterType ?? widget.initialType;
     _imagePath = widget.initial?.iconImagePath;
     // Todos marcados por padrão.
     _selectedTemplateIds =
         widget.templates.map((t) => t.id).whereType<int>().toSet();
+    _taken = widget.takenNames.map((n) => n.trim().toLowerCase()).toSet();
   }
 
   @override
@@ -877,6 +892,7 @@ class _CharacterDialogState extends State<_CharacterDialog> {
     }
     _name.dispose();
     _role.dispose();
+    _nameFocus.dispose();
     super.dispose();
   }
 
@@ -916,192 +932,358 @@ class _CharacterDialogState extends State<_CharacterDialog> {
     }
   }
 
+  /// Erro do nome (aparece no próprio campo) ou null se está ok.
+  String? _validarNome() {
+    final nome = _name.text.trim();
+    if (nome.isEmpty) return 'Dê um nome ao personagem';
+    // Editar sem trocar o nome sempre pode: grupos antigos (ou vindos de
+    // backup) podem ter nomes repetidos, e isso não pode travar a edição.
+    final original = widget.initial?.name.trim().toLowerCase();
+    if (original != null && nome.toLowerCase() == original) return null;
+    if (_taken.contains(nome.toLowerCase())) {
+      return 'Já existe "$nome" neste grupo';
+    }
+    return null;
+  }
+
+  /// true se o nome passou; senão mostra o erro e devolve o foco ao campo.
+  bool _nomeOk() {
+    final erro = _validarNome();
+    if (erro == null) return true;
+    setState(() => _nameError = erro);
+    _nameFocus.requestFocus();
+    return false;
+  }
+
+  Character _montar() {
+    final role = _role.text.trim();
+    final base = widget.initial ??
+        Character(groupId: widget.groupId, name: '', createdAt: DateTime.now());
+    return base.copyWith(
+      name: _name.text.trim(),
+      role: role.isEmpty ? null : role,
+      clearRole: role.isEmpty,
+      characterType: _type,
+      iconImagePath: _imagePath,
+      clearIconImage: _imagePath == null,
+    );
+  }
+
+  /// [abrir] true = "Criar e abrir" (fecha e a tela abre o novo);
+  /// false = "Criar outro" (grava, avisa aqui dentro e limpa o nome).
+  Future<void> _criar({required bool abrir}) async {
+    // Durante o import de foto não cria: a foto chegaria no personagem errado.
+    if (_saving || _importing || !_nomeOk()) return;
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    try {
+      final novo = _montar();
+      // A foto que vai de fato no personagem — o _imagePath pode mudar
+      // durante o await.
+      final foto = novo.iconImagePath;
+      final salvo = await widget.onCreate!(
+          novo, widget.templates.isEmpty ? null : {..._selectedTemplateIds});
+      // Foto gravada no personagem sai da lista de limpeza do dispose.
+      if (foto != null) _imported.remove(foto);
+      if (!mounted) return;
+      if (abrir) {
+        // Só fecha a SI MESMO (nunca a tela de baixo).
+        if (ModalRoute.of(context)?.isCurrent ?? false) {
+          Navigator.pop(context, salvo);
+        }
+        return;
+      }
+      setState(() {
+        _criados.add(salvo.name);
+        _taken.add(salvo.name.toLowerCase());
+        _name.clear();
+        _role.clear();
+        _imagePath = null; // foto é de cada personagem; tipo e modelo ficam
+      });
+      _nameFocus.requestFocus();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _saveError = 'Não foi possível salvar — tente de novo.');
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  void _salvarEdicao() {
+    if (_importing || !_nomeOk()) return;
+    // Foto salva sai da lista de limpeza do dispose.
+    if (_imagePath != null) _imported.remove(_imagePath);
+    Navigator.pop(context, _montar());
+  }
+
+  /// Enter no nome = ação principal.
+  void _acaoPrincipal() =>
+      _isEdit ? _salvarEdicao() : _criar(abrir: true);
+
   @override
   Widget build(BuildContext context) {
-    final isEdit = widget.initial != null;
-    return AlertDialog(
-      title: Text(isEdit ? 'Editar Personagem' : 'Novo Personagem'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _name,
-              decoration: const InputDecoration(
-                  labelText: 'Nome', border: OutlineInputBorder()),
-              autofocus: !isEdit,
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _role,
-              decoration: const InputDecoration(
-                  labelText: 'Função/Classe (opcional)',
-                  hintText: 'ex.: Tank, DPS, Support',
-                  border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 12),
-            // Foto do personagem (opcional) — vira PNG interno do app.
-            Row(
+    final cs = Theme.of(context).colorScheme;
+    final ocupado = _saving || _importing;
+    // Enquanto grava, Esc/toque fora/Cancelar não fecham (senão o pop do fim
+    // da gravação fecharia a tela de baixo, e a foto seria apagada).
+    return PopScope(
+      canPop: !_saving,
+      child: AlertDialog(
+        title: Text(_isEdit ? 'Editar personagem' : 'Novo personagem'),
+        content: SizedBox(
+          // Largura fixa (limitada pela tela): evita que as listas expansíveis
+          // peçam "largura intrínseca" ao dialog.
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GroupIcon(
-                    imagePath: _imagePath,
-                    emoji: widget.names.emojiOf(_type),
-                    size: 44,
-                    emojiSize: 26),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _importing ? null : _pickImage,
-                    icon: const Icon(Icons.image_outlined, size: 18),
-                    label:
-                        Text(_imagePath == null ? 'Usar foto' : 'Trocar foto'),
+                TextField(
+                  controller: _name,
+                  focusNode: _nameFocus,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  decoration: InputDecoration(
+                    labelText: 'Nome',
+                    prefixIcon: const Icon(Icons.badge_outlined),
+                    border: const OutlineInputBorder(),
+                    errorText: _nameError,
+                    helperText: _isEdit ? null : 'Enter cria e abre',
                   ),
+                  onChanged: (_) {
+                    if (_nameError != null) setState(() => _nameError = null);
+                  },
+                  onSubmitted: (_) => _acaoPrincipal(),
                 ),
-                if (_imagePath != null)
-                  IconButton(
-                    tooltip: 'Remover foto (voltar ao emoji)',
-                    icon: const Icon(Icons.close),
-                    onPressed: () => setState(() => _imagePath = null),
-                  ),
-              ],
-            ),
-            if (_pickError != null) ...[
-              const SizedBox(height: 8),
-              Text(_pickError!,
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontSize: 12)),
-            ],
-            const SizedBox(height: 14),
-            Text('Tipo de unidade',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade500,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            // Seletor de tipo com cards visuais
-            Row(
-              children: CharacterType.values.map((t) {
-                final selected = _type == t;
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _type = t),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      margin: const EdgeInsets.only(right: 6),
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 10, horizontal: 4),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withValues(alpha:0.15)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: selected
-                              ? Theme.of(context).colorScheme.primary
-                              : Colors.grey.shade600,
-                          width: selected ? 2 : 1,
+                if (_criados.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Semantics(
+                    liveRegion: true,
+                    child: Row(
+                      children: [
+                        Icon(Icons.check_circle, size: 18, color: cs.primary),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            _criados.length == 1
+                                ? '"${_criados.last}" criado'
+                                : '"${_criados.last}" criado · '
+                                    '${_criados.length} nesta vez',
+                            style: TextStyle(fontSize: 13, color: cs.primary),
+                          ),
                         ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(widget.names.emojiOf(t),
-                              style: const TextStyle(fontSize: 20)),
-                          const SizedBox(height: 4),
-                          Text(widget.names.labelOf(t),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: selected
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                              ),
-                              textAlign: TextAlign.center),
-                        ],
-                      ),
+                      ],
                     ),
                   ),
-                );
-              }).toList(),
+                ],
+                const SizedBox(height: 14),
+                _rotulo('Tipo de unidade', Icons.category_outlined),
+                const SizedBox(height: 8),
+                Row(
+                  children: CharacterType.values.map((t) {
+                    final selected = _type == t;
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: OptionCard(
+                          selected: selected,
+                          semanticLabel: 'Tipo ${widget.names.labelOf(t)}',
+                          onTap: () => setState(() => _type = t),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 10, horizontal: 4),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(widget.names.emojiOf(t),
+                                  style: const TextStyle(fontSize: 20)),
+                              const SizedBox(height: 4),
+                              Text(widget.names.labelOf(t),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: selected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
+                                  textAlign: TextAlign.center),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                if (_type == CharacterType.comandante) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '${widget.names.emojiOf(CharacterType.comandante)} '
+                    '${widget.names.labelOf(CharacterType.comandante)} não entra '
+                    'em batalha diretamente, mas pode ser monitorado e ter notas.',
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
+                ],
+                // Status do modelo — só na criação. Recolhido numa linha de
+                // resumo: o normal é querer todos.
+                if (!_isEdit && widget.templates.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  _modeloDoGrupo(cs),
+                ],
+                _maisOpcoes(cs),
+                if (_saveError != null)
+                  Text(_saveError!,
+                      style: TextStyle(color: cs.error, fontSize: 13)),
+              ],
             ),
-            if (_type == CharacterType.comandante) ...[
-              const SizedBox(height: 8),
-              Text(
-                '${widget.names.emojiOf(CharacterType.comandante)} '
-                '${widget.names.labelOf(CharacterType.comandante)} não entra '
-                'em batalha diretamente, mas pode ser monitorado e ter notas.',
-                style: TextStyle(
-                    fontSize: 11, color: Colors.grey.shade500),
-              ),
-            ],
-            // Status do modelo — só na criação, com caixinhas: nem todo
-            // status vale para todo personagem.
-            if (!isEdit && widget.templates.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Text('Status do modelo (desmarque os que não valem)',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade500,
-                      fontWeight: FontWeight.w600)),
-              const SizedBox(height: 4),
-              ...widget.templates.map((t) {
-                final id = t.id;
-                if (id == null) return const SizedBox.shrink();
-                return CheckboxListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: Text('${t.name} · ${t.type.label}',
-                      style: const TextStyle(fontSize: 13)),
-                  value: _selectedTemplateIds.contains(id),
-                  onChanged: (v) => setState(() {
-                    if (v == true) {
-                      _selectedTemplateIds.add(id);
-                    } else {
-                      _selectedTemplateIds.remove(id);
-                    }
-                  }),
-                );
-              }),
-            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: _saving ? null : () => Navigator.pop(context),
+              child: const Text('Cancelar')),
+          if (_isEdit)
+            FilledButton.icon(
+              onPressed: ocupado ? null : _salvarEdicao,
+              icon: const Icon(Icons.check),
+              label: const Text('Salvar'),
+            )
+          else ...[
+            OutlinedButton.icon(
+              onPressed: ocupado ? null : () => _criar(abrir: false),
+              icon: const Icon(Icons.add),
+              label: const Text('Criar outro'),
+            ),
+            FilledButton.icon(
+              onPressed: ocupado ? null : () => _criar(abrir: true),
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('Criar e abrir'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _rotulo(String texto, IconData icone) {
+    final cor = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Row(children: [
+      Icon(icone, size: 16, color: cor),
+      const SizedBox(width: 6),
+      Text(texto,
+          style: TextStyle(
+              fontSize: 13, color: cor, fontWeight: FontWeight.w600)),
+    ]);
+  }
+
+  /// "✓ N de M status do modelo" — abre a lista com Todos/Nenhum.
+  Widget _modeloDoGrupo(ColorScheme cs) {
+    final ids = widget.templates.map((t) => t.id).whereType<int>().toSet();
+    final marcados = _selectedTemplateIds.length;
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      shape: const Border(),
+      collapsedShape: const Border(),
+      leading: const Icon(Icons.checklist),
+      title: const Text('Status do modelo'),
+      subtitle: Text('✓ $marcados de ${ids.length} vão para o personagem'),
+      children: [
+        // Wrap: com fonte grande, os dois botões descem de linha em vez de
+        // estourar a largura do dialog.
+        Wrap(
+          spacing: 8,
+          children: [
+            TextButton.icon(
+              onPressed: () =>
+                  setState(() => _selectedTemplateIds = {...ids}),
+              icon: const Icon(Icons.done_all),
+              label: const Text('Todos'),
+            ),
+            TextButton.icon(
+              onPressed: () => setState(() => _selectedTemplateIds = {}),
+              icon: const Icon(Icons.remove_done),
+              label: const Text('Nenhum'),
+            ),
           ],
         ),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar')),
-        ElevatedButton(
-          onPressed: () {
-            if (_name.text.trim().isEmpty) return;
-            widget.onTemplateSelection?.call(_selectedTemplateIds);
-            // Foto salva sai da lista de limpeza do dispose.
-            if (_imagePath != null) _imported.remove(_imagePath);
-            final base = widget.initial ??
-                Character(
-                  groupId: widget.groupId,
-                  name: '',
-                  createdAt: DateTime.now(),
-                );
-            Navigator.pop(
-              context,
-              base.copyWith(
-                name: _name.text.trim(),
-                role: _role.text.trim().isEmpty ? null : _role.text.trim(),
-                clearRole: _role.text.trim().isEmpty,
-                characterType: _type,
-                iconImagePath: _imagePath,
-                clearIconImage: _imagePath == null,
-              ),
-            );
-          },
-          child: Text(isEdit ? 'Salvar' : 'Criar'),
+        ...widget.templates.map((t) {
+          final id = t.id;
+          if (id == null) return const SizedBox.shrink();
+          return CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            // O subtítulo já fala o tipo; o selo é só visual aqui.
+            secondary:
+                ExcludeSemantics(child: StatTypeBadge(t.type, size: 26)),
+            title: Text(t.name, style: const TextStyle(fontSize: 14)),
+            subtitle: Text(t.type.label),
+            value: _selectedTemplateIds.contains(id),
+            onChanged: (v) => setState(() {
+              if (v == true) {
+                _selectedTemplateIds.add(id);
+              } else {
+                _selectedTemplateIds.remove(id);
+              }
+            }),
+          );
+        }),
+      ],
+    );
+  }
+
+  /// Função/classe e foto: opcionais, recolhidos (abertos na edição se já
+  /// tiverem algo).
+  Widget _maisOpcoes(ColorScheme cs) {
+    final temAlgo = _role.text.trim().isNotEmpty || _imagePath != null;
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      shape: const Border(),
+      collapsedShape: const Border(),
+      initiallyExpanded: _isEdit && temAlgo,
+      leading: const Icon(Icons.tune),
+      title: const Text('Mais opções'),
+      subtitle: const Text('Função/classe e foto'),
+      childrenPadding: const EdgeInsets.only(bottom: 8),
+      children: [
+        TextField(
+          controller: _role,
+          decoration: const InputDecoration(
+              labelText: 'Função/Classe (opcional)',
+              hintText: 'ex.: Tank, DPS, Support',
+              prefixIcon: Icon(Icons.work_outline),
+              border: OutlineInputBorder()),
+          onSubmitted: (_) => _acaoPrincipal(),
         ),
+        const SizedBox(height: 12),
+        // Foto do personagem (opcional) — vira PNG interno do app.
+        Row(
+          children: [
+            GroupIcon(
+                imagePath: _imagePath,
+                emoji: widget.names.emojiOf(_type),
+                size: 44,
+                emojiSize: 26),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _importing ? null : _pickImage,
+                icon: const Icon(Icons.image_outlined, size: 18),
+                label: Text(_imagePath == null ? 'Usar foto' : 'Trocar foto'),
+              ),
+            ),
+            if (_imagePath != null)
+              IconButton(
+                tooltip: 'Remover foto (voltar ao emoji)',
+                icon: const Icon(Icons.close),
+                onPressed: () => setState(() => _imagePath = null),
+              ),
+          ],
+        ),
+        if (_pickError != null) ...[
+          const SizedBox(height: 8),
+          Text(_pickError!, style: TextStyle(color: cs.error, fontSize: 12)),
+        ],
       ],
     );
   }
@@ -1351,6 +1533,7 @@ class _SubGroupDialog extends StatefulWidget {
 
 class _SubGroupDialogState extends State<_SubGroupDialog> {
   late TextEditingController _name;
+  String? _nameError;
   ContentCategory _category = ContentCategory.general;
   String _emoji = '📁';
 
@@ -1383,6 +1566,25 @@ class _SubGroupDialogState extends State<_SubGroupDialog> {
     });
   }
 
+  /// Ação principal (botão e Enter no nome). Nome vazio → aviso no campo.
+  void _salvar() {
+    final n = _name.text.trim();
+    if (n.isEmpty) {
+      setState(() => _nameError = 'Dê um nome ao sub-grupo');
+      return;
+    }
+    Navigator.pop(
+      context,
+      GameGroup(
+        parentId: widget.parentId,
+        name: n,
+        iconEmoji: _emoji,
+        createdAt: DateTime.now(),
+        contentCategory: _category,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -1403,35 +1605,16 @@ class _SubGroupDialogState extends State<_SubGroupDialog> {
               runSpacing: 8,
               children: ContentCategory.values.map((cat) {
                 final selected = _category == cat;
-                return GestureDetector(
+                return OptionCard(
+                  selected: selected,
+                  semanticLabel: 'Categoria ${cat.label}',
                   onTap: () => _onCategoryChanged(cat),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha:0.15)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: selected
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.grey.shade600,
-                        width: selected ? 2 : 1,
-                      ),
-                    ),
-                    child: Text(
-                      '${cat.emoji} ${cat.label}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: selected
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                      ),
+                  child: Text(
+                    '${cat.emoji} ${cat.label}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight:
+                          selected ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
                 );
@@ -1440,10 +1623,16 @@ class _SubGroupDialogState extends State<_SubGroupDialog> {
             const SizedBox(height: 16),
             TextField(
               controller: _name,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                   labelText: 'Nome do sub-grupo',
-                  border: OutlineInputBorder()),
-              autofocus: false,
+                  border: const OutlineInputBorder(),
+                  errorText: _nameError),
+              autofocus: true,
+              textInputAction: TextInputAction.done,
+              onChanged: (_) {
+                if (_nameError != null) setState(() => _nameError = null);
+              },
+              onSubmitted: (_) => _salvar(),
             ),
           ],
         ),
@@ -1452,22 +1641,10 @@ class _SubGroupDialogState extends State<_SubGroupDialog> {
         TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancelar')),
-        ElevatedButton(
-          onPressed: () {
-            final n = _name.text.trim();
-            if (n.isEmpty) return;
-            Navigator.pop(
-              context,
-              GameGroup(
-                parentId: widget.parentId,
-                name: n,
-                iconEmoji: _emoji,
-                createdAt: DateTime.now(),
-                contentCategory: _category,
-              ),
-            );
-          },
-          child: const Text('Criar'),
+        FilledButton.icon(
+          onPressed: _salvar,
+          icon: const Icon(Icons.check),
+          label: const Text('Criar'),
         ),
       ],
     );

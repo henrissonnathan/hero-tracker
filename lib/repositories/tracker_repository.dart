@@ -378,4 +378,29 @@ class TrackerRepository {
       await insertStat(template.toCharacterStat(character.id!));
     }
   }
+
+  /// Cria o personagem JÁ com os status do modelo, numa transação só: ou
+  /// entra tudo, ou nada (sem personagem "pela metade" se um insert falhar —
+  /// o dialog de criação pode dizer "tente de novo" com verdade).
+  /// [onlyTemplateIds] funciona igual ao de [applyGroupTemplatesToCharacter].
+  Future<Character> insertCharacterWithTemplates(
+    Character character, {
+    Set<int>? onlyTemplateIds,
+  }) async {
+    // Lê o modelo ANTES: dentro da transação só vale o txn (E26).
+    final templates = await getEffectiveTemplates(character.groupId);
+    final db = await DatabaseHelper.instance.database;
+    return db.transaction((txn) async {
+      final id = await txn.insert('characters', character.toMap());
+      for (final template in templates) {
+        if (onlyTemplateIds != null &&
+            !onlyTemplateIds.contains(template.id)) {
+          continue;
+        }
+        await txn.insert(
+            'character_stats', template.toCharacterStat(id).toMap());
+      }
+      return character.copyWith(id: id);
+    });
+  }
 }

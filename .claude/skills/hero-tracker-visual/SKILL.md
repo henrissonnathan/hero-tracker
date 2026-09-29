@@ -69,6 +69,16 @@ Mover qualquer uma dessas para fora da UI é tarefa FUNC, não VISL.
 6. Usuário tem dificuldade para digitar: prefira chips/atalhos/botões a
    texto livre; Enter salva, Esc cancela
 
+## Padrões de widget e navegação (fonte: docs/PADROES-UI.md — LEIA antes)
+- Escolher uma opção → `OptionCard` / `EmojiChoice` (widgets/option_card.dart).
+  Nunca `GestureDetector` em algo clicável.
+- Item de lista → tocar abre (personagem/grupo) ou edita (status, modelo,
+  habilidade); Editar/Apagar no ⋮ `ItemActionsMenu` (widgets/item_actions.dart).
+- Apagar → `confirmDelete(context, itemName:, detalhe:)`; palavra "Apagar".
+- Dialog → autofocus, Enter = ação principal, erro no campo, "Mais opções"
+  recolhido, botão principal `FilledButton.icon` com verbo.
+- Criar → "Criar e abrir" (principal) / "Criar outro" (fica no dialog).
+
 ## Tipos de status (fonte: lib/ui/widgets/stat_type_visual.dart)
 | StatType | ícone (Icons.*)     | cor                                 |
 |----------|---------------------|-------------------------------------|

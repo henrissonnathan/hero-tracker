@@ -6,6 +6,7 @@ import '../models/group_stat_template.dart';
 import '../models/stat_type.dart';
 import '../repositories/tracker_repository.dart';
 import '../services/export_service.dart';
+import 'widgets/item_actions.dart';
 import 'widgets/stat_form_dialog.dart';
 import 'widgets/stat_type_visual.dart';
 
@@ -250,24 +251,11 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   Future<void> _delete(GroupStatTemplate template) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Deletar status do jogo'),
-        content: Text(
-            'Deletar "${template.name}"? Personagens já criados mantêm seus status (é uma cópia).'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Deletar',
-                  style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-    if (ok == true) {
+    final ok = await confirmDelete(context,
+        itemName: template.name,
+        detalhe:
+            'Personagens já criados mantêm seus status (é uma cópia).');
+    if (ok) {
       await TrackerRepository.instance.deleteTemplate(template.id!);
       setState(() => _templates.removeWhere((t) => t.id == template.id));
     }
@@ -520,17 +508,10 @@ class _CategorySection extends StatelessWidget {
                             ],
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined, size: 20),
-                          tooltip: 'Editar "${t.name}"',
-                          onPressed: () => onEdit(t),
-                          color: Colors.grey.shade400,
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 20),
-                          tooltip: 'Apagar "${t.name}"',
-                          onPressed: () => onDelete(t),
-                          color: Colors.red.shade300,
+                        ItemActionsMenu(
+                          itemName: t.name,
+                          onEdit: () => onEdit(t),
+                          onDelete: () => onDelete(t),
                         ),
                       ],
                     ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/character_stat.dart';
 import '../../models/stat_type.dart';
 import '../../theme/app_theme.dart';
+import 'item_actions.dart';
 import 'stat_type_visual.dart';
 
 /// Card de exibição de um [CharacterStat].
@@ -46,109 +47,105 @@ class StatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Padrão do app: tocar no card EDITA; o ⋮ guarda Editar/Apagar.
     return Card(
+      clipBehavior: Clip.antiAlias,
       margin: margin ??
           const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: _typeColor,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    stat.name,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                ),
-                Icon(stat.type.icon, size: 14, color: _typeColor),
-                const SizedBox(width: 3),
-                Text(
-                  stat.type.label,
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: _typeColor,
-                      fontWeight: FontWeight.w600),
-                ),
-                if (onEdit != null)
-                  IconButton(
-                    icon: const Icon(Icons.edit, size: 16),
-                    tooltip: 'Editar "${stat.name}"',
-                    onPressed: onEdit,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                  ),
-                if (onDelete != null)
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 16),
-                    tooltip: 'Apagar "${stat.name}"',
-                    onPressed: onDelete,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (stat.type == StatType.trigger)
-              Text(
-                stat.triggerText ?? '',
-                style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.white.withValues(alpha:0.85),
-                    fontStyle: FontStyle.italic),
-              )
-            else if (stat.type == StatType.formula)
-              _FormulaDisplay(stat: stat, color: _typeColor)
-            else if (stat.type == StatType.percent)
-              _PercentBar(stat: stat, color: _typeColor)
-            else
+      child: InkWell(
+        onTap: onEdit,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(
                 children: [
-                  if (onDecrement != null)
-                    IconButton(
-                      icon: const Icon(Icons.remove_circle_outline),
-                      onPressed: onDecrement,
+                  Container(
+                    width: 4,
+                    height: 16,
+                    decoration: BoxDecoration(
                       color: _typeColor,
-                      visualDensity: VisualDensity.compact,
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                  Text(
-                    stat.displayValue,
-                    style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: _typeColor),
                   ),
-                  if (onIncrement != null)
-                    IconButton(
-                      icon: const Icon(Icons.add_circle_outline),
-                      onPressed: onIncrement,
-                      color: _typeColor,
-                      visualDensity: VisualDensity.compact,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      stat.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                  ),
+                  Icon(stat.type.icon, size: 14, color: _typeColor),
+                  const SizedBox(width: 3),
+                  Text(
+                    stat.type.label,
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: _typeColor,
+                        fontWeight: FontWeight.w600),
+                  ),
+                  if (onEdit != null || onDelete != null)
+                    ItemActionsMenu(
+                      itemName: stat.name,
+                      onEdit: onEdit,
+                      onDelete: onDelete,
+                      iconSize: 18,
                     ),
                 ],
               ),
-            if (boostedValue != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                '⚡ com habilidades: ${_fmtBoosted(boostedValue!)}',
-                style: const TextStyle(
-                    fontSize: 13,
-                    color: Colors.greenAccent,
-                    fontWeight: FontWeight.w600),
-              ),
+              const SizedBox(height: 8),
+              if (stat.type == StatType.trigger)
+                Text(
+                  stat.triggerText ?? '',
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.white.withValues(alpha:0.85),
+                      fontStyle: FontStyle.italic),
+                )
+              else if (stat.type == StatType.formula)
+                _FormulaDisplay(stat: stat, color: _typeColor)
+              else if (stat.type == StatType.percent)
+                _PercentBar(stat: stat, color: _typeColor)
+              else
+                Row(
+                  children: [
+                    if (onDecrement != null)
+                      IconButton(
+                        icon: const Icon(Icons.remove_circle_outline),
+                        tooltip: 'Diminuir "${stat.name}"',
+                        onPressed: onDecrement,
+                        color: _typeColor,
+                      ),
+                    Text(
+                      stat.displayValue,
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: _typeColor),
+                    ),
+                    if (onIncrement != null)
+                      IconButton(
+                        icon: const Icon(Icons.add_circle_outline),
+                        tooltip: 'Aumentar "${stat.name}"',
+                        onPressed: onIncrement,
+                        color: _typeColor,
+                      ),
+                  ],
+                ),
+              if (boostedValue != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '⚡ com habilidades: ${_fmtBoosted(boostedValue!)}',
+                  style: const TextStyle(
+                      fontSize: 13,
+                      color: Colors.greenAccent,
+                      fontWeight: FontWeight.w600),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

@@ -39,8 +39,11 @@ erro aparece no próprio campo (`errorText`) e não num SnackBar que some.
 
 ### 1. Alvos de toque
 Mínimo 48×48 dp. `IconButton` padrão já tem 48: o problema é
-`VisualDensity.compact`, `padding: EdgeInsets.zero` + `constraints` < 48 (ainda
-existem em stat_tile.dart e outras telas). Use
+`VisualDensity.compact`, `padding: EdgeInsets.zero` + `constraints` < 48,
+`tapTargetSize: shrinkWrap` (zerados em lib/ui na sprint de 2026-09-29; o
+`test/tap_target_test.dart` mede cada botão e reprova se voltarem). Escolha =
+`OptionCard`/`EmojiChoice`; ações de item = ⋮ `ItemActionsMenu`
+(docs/PADROES-UI.md). Use
 `BoxConstraints(minWidth: 48, minHeight: 48)` ou Padding equivalente — não
 aumente o ícone visualmente.
 

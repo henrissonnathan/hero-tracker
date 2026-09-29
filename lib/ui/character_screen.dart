@@ -10,6 +10,7 @@ import '../models/unit_type_label.dart';
 import '../repositories/tracker_repository.dart';
 import '../theme/app_theme.dart';
 import 'widgets/group_icon.dart';
+import 'widgets/item_actions.dart';
 import 'widgets/star_rank_display.dart';
 import 'widgets/stat_tile.dart';
 import 'widgets/stat_form_dialog.dart';
@@ -109,6 +110,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
   }
 
   Future<void> _deleteStat(CharacterStat stat) async {
+    if (!await confirmDelete(context, itemName: stat.name)) return;
     await TrackerRepository.instance.deleteStat(stat.id!);
     setState(() => _stats.removeWhere((s) => s.id == stat.id));
   }
@@ -250,6 +252,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
   }
 
   Future<void> _deleteAbility(CharacterAbility ability) async {
+    if (!await confirmDelete(context, itemName: ability.name)) return;
     await TrackerRepository.instance.deleteAbility(ability.id!);
     setState(() => _abilities.removeWhere((a) => a.id == ability.id));
   }
@@ -379,7 +382,6 @@ class _CharacterScreenState extends State<CharacterScreen> {
                           icon: const Icon(Icons.add, size: 20),
                           tooltip: 'Nova habilidade',
                           onPressed: _addAbility,
-                          visualDensity: VisualDensity.compact,
                         ),
                       ],
                     ),
@@ -503,7 +505,9 @@ class _HeaderCard extends StatelessWidget {
                           Text('· não entra em batalha',
                               style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.grey.shade600)),
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant)),
                         ],
                       ],
                     ),
@@ -614,7 +618,6 @@ class _RankButton extends StatelessWidget {
           padding:
               const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
         child: Text(label, style: const TextStyle(fontSize: 12)),
       ),
@@ -645,64 +648,61 @@ class _AbilityCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
+    // Padrão do app: tocar na habilidade EDITA; o ⋮ guarda Editar/Apagar.
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(ability.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14)),
-                  if ((ability.description ?? '').isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(ability.description!,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onEdit,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(ability.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14)),
+                    if ((ability.description ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(ability.description!,
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                              color: Colors.grey.shade400)),
+                    ],
+                    if (ability.hasEffect) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '⚡ ${(ability.triggerText ?? '').isEmpty ? 'sempre' : ability.triggerText} '
+                        '→ ${ability.bonusLabel} ${ability.targetStatName}',
                         style: TextStyle(
                             fontSize: 12,
-                            fontStyle: FontStyle.italic,
-                            color: Colors.grey.shade400)),
+                            color: statExists ? primary : Colors.red.shade300,
+                            fontWeight: FontWeight.w600),
+                      ),
+                      if (!statExists)
+                        Text('status não existe mais — efeito inerte',
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.red.shade300)),
+                    ],
                   ],
-                  if (ability.hasEffect) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      '⚡ ${(ability.triggerText ?? '').isEmpty ? 'sempre' : ability.triggerText} '
-                      '→ ${ability.bonusLabel} ${ability.targetStatName}',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: statExists ? primary : Colors.red.shade300,
-                          fontWeight: FontWeight.w600),
-                    ),
-                    if (!statExists)
-                      Text('status não existe mais — efeito inerte',
-                          style: TextStyle(
-                              fontSize: 11, color: Colors.red.shade300)),
-                  ],
-                ],
+                ),
               ),
-            ),
-            if (ability.hasEffect)
-              Switch(
-                value: ability.isActive,
-                onChanged: statExists ? onToggle : null,
+              if (ability.hasEffect)
+                Switch(
+                  value: ability.isActive,
+                  onChanged: statExists ? onToggle : null,
+                ),
+              ItemActionsMenu(
+                itemName: ability.name,
+                onEdit: onEdit,
+                onDelete: onDelete,
               ),
-            PopupMenuButton<String>(
-              onSelected: (v) {
-                if (v == 'edit') onEdit();
-                if (v == 'delete') onDelete();
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'edit', child: Text('Editar')),
-                PopupMenuItem(
-                    value: 'delete',
-                    child: Text('Deletar',
-                        style: TextStyle(color: Colors.red))),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

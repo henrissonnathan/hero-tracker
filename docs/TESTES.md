@@ -1,6 +1,6 @@
 # 🧪 TESTES — o que o robô já testa por você
 
-> Última atualização: 2026-09-29 · **51 testes automáticos, todos verdes**
+> Última atualização: 2026-09-29 · **67 testes automáticos, todos verdes**
 > Como rodar: dois cliques no **`TESTAR.bat`**. Ele mesmo diz no final:
 > `=== TUDO VERDE - pode commitar. ===` (ou aponta exatamente o que quebrou).
 >
@@ -121,6 +121,49 @@ campo (ex.: nível, categoria, foto) sumiria calado ao salvar.
 | **Gatilho já usado** no jogo entra com um toque | Redigitar o mesmo gatilho (e errar a grafia) |
 | Sem nome não salva e o **aviso aparece no próprio campo** | Status sem nome na lista |
 
+### ➕ Criar herói pela tela — 5 testes (`character_create_test.dart`)
+
+| O teste garante que… | Se quebrasse, você perderia |
+|---|---|
+| **Enter** cria com o **tipo já sugerido** e **abre a tela do herói**, com os status do modelo | Ter que tocar no tipo e no card toda vez |
+| Nome **vazio ou repetido**: aviso no próprio campo e **nada gravado** | Herói sem nome ou dois com o mesmo nome |
+| **"Criar outro"** grava, avisa, **mantém o tipo e volta o foco no nome** | Abrir e fechar o dialog para cada herói |
+| **Editar** herói com nome repetido **antigo** salva sem trocar o nome | Herói antigo que não dá mais para editar |
+| **"Nenhum"** no modelo: o herói nasce sem status | Caixinhas que não valem na hora de criar |
+
+### 🎯 Tipo sugerido — 3 testes (`character_type_suggestion_test.dart`)
+
+| O teste garante que… | Se quebrasse, você perderia |
+|---|---|
+| Grupo vazio: **Heróis** sugere herói, o resto sugere soldado | Tipo errado já marcado no primeiro herói |
+| O tipo **mais comum** no grupo vence | Sugestão que ignora o jogo |
+| Empate: vale o da **categoria** | Sugestão que muda sozinha |
+
+### 🧩 Padrões de tela — 4 testes (`option_card_test.dart`)
+
+| O teste garante que… | Se quebrasse, você perderia |
+|---|---|
+| Cartão de escolha: toque (**dedo e leitor de tela**) escolhe, **fala "selecionado"**, 48×48 | Opção que o leitor de tela anuncia mas não escolhe |
+| Cartão de escolha pelo **teclado**: Tab chega e Enter escolhe | Opção que o teclado do PC não alcança |
+| Ícone de emoji é um **quadrado de 48×48** | Emoji difícil de acertar |
+| **⋮** mostra Editar/Apagar e **Apagar sempre pede confirmação** | Apagar sem querer com um toque |
+
+### 👆 Tamanho dos botões — 4 testes (`tap_target_test.dart`)
+
+| O teste garante que… | Se quebrasse, você perderia |
+|---|---|
+| Tela do jogo e dialog de criação: **todo botão ≥ 48×48** | Botão pequeno demais para o dedo |
+
+> Cada teste roda **2 vezes**: como Android e como **Windows**, com o tema
+> real do app. No Windows o Flutter encolhe botões por padrão — sem o ajuste
+> no `AppTheme` as 4 telas reprovam (provado).
+| Tela do herói (status, habilidade, estrelas): ≥ 48×48 | Errar o toque e editar a coisa errada |
+| Árvore, inclusive a **bolinha de desbloquear**: ≥ 48×48 | Desbloquear o nó errado |
+| Tela de estatísticas: ≥ 48×48 | Menu ⋮ difícil de acertar |
+
+> Mede **cada botão** direto: a checagem padrão do Flutter é cega para botão
+> pequeno dentro de card/linha clicável (provado injetando um botão 40×40).
+
 ### 🧪 Esta própria lista — 2 testes (`tests_info_test.dart`)
 
 | O teste garante que… | Se quebrasse, você perderia |
@@ -156,9 +199,8 @@ ordem de importância. **Diga quais você quer** (ou nenhuma, ou outra ideia sua
 |---|---|---|
 | **A** | **Foto (grupo e herói)**: testar o pipeline anti-vírus (recusa arquivo falso, imagem gigante "bomba de pixels", vira PNG interno) | É a parte de **segurança**; hoje só é testada por você abrindo o app |
 | **B** | **Toggle de habilidade na tela**: ligar e ver o número mudar na tela (hoje só testo o dado, não a tela) | É o efeito que você mais olha |
-| **C** | **Criar herói pela tela** com as caixinhas marcadas | O caminho que mais se usa no dia a dia |
 | **D** | **Exportar pra arquivo de verdade** (hoje testo o conteúdo, não o salvar) | Fecha o último buraco do backup |
-| **E** | **Tela da árvore** de habilidades | Ainda sem nenhum teste de tela |
+| **E** | **Tela da árvore**: desbloquear e criar sub-habilidade pela tela | Hoje só o tamanho dos botões dela é testado |
 
 ---
 
