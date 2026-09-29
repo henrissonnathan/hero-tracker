@@ -49,6 +49,13 @@ CONTEXTUAIS — carregam só quando o gatilho dispara:
     caveman-compress|-commit|-review|-help|-stats|cavecrew → mesma pasta; agents cavecrew-* em .claude/agents/
     hook .claude/hooks/caveman_lembrete.py (UserPromptSubmit) lembra o nível; nível em .claude/caveman/nivel (fora do git)
   segundo-cerebro-obsidian       | CERE   | obsidian|vault|/segundo-cerebro             | PKM pessoal (manual, nunca em sessão de código)
+  hero-tracker-visual    | VISL ⚙ | aparência|visual|layout|tema|cor|widget|ícone|foto|dark-mode    | ajustes visuais sem tocar lógica; Material 3
+  hero-tracker-func      | FUNC ⚙ | model|repository|CRUD|seed|habilidade|bônus|herança|foto-segura  | regra de negócio; schema→BANC, arquivo→JSON
+  hero-tracker-banco     | BANC ⚙ | schema|migration|onUpgrade|ALTER-TABLE|_dbVersion|coluna-nova      | migration de ponta a ponta (próxima = v12)
+  hero-tracker-json      | JSON ⚙ | JSON|contrato|backup|export|import|pacote|formatVersion|mapear-jogo | contrato oficial + pacote de jogo (2º app)
+  hero-tracker-testes    | TEST ⚙ | teste|test|flutter-test|cobertura|mock|FFI|bateria|verde|vermelho  | bateria de testes: escrever, corrigir, auditar
+  hero-tracker-a11y      | A11Y ⚙ | acessibilidade|a11y|talkback|semantics|contraste|toque-48|wcag    | acessibilidade WCAG AA; sem tocar lógica
+  hero-tracker-central   | CENT   | orquestrar|dividir|chats-filhos|handoff|integrar|sprint           | chat central: divide, roteia, integra, commit c/ OK
 
 DESCARTADAS — TRPROC/Flask/web, NÃO carregar no hero-tracker:
   arquitetura-banco-dados       → schema do CRM Mesa
