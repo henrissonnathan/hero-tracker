@@ -27,7 +27,8 @@ class AppTheme {
 
   /// Cores por tipo de status
   static const Color percentColor = Color(0xFF66BB6A);
-  static const Color numberColor = Color(0xFFAB47BC);
+  // Roxo claro: o AB47BC dava ~3,9:1 no fundo escuro (WCAG pede 4,5:1).
+  static const Color numberColor = Color(0xFFCE93D8);
   static const Color triggerColor = Color(0xFFFF7043);
   static const Color formulaColor = Color(0xFF26C6DA);
 }

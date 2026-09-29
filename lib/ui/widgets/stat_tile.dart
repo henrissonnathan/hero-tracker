@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/character_stat.dart';
 import '../../models/stat_type.dart';
 import '../../theme/app_theme.dart';
+import 'stat_type_visual.dart';
 
 /// Card de exibição de um [CharacterStat].
 class StatTile extends StatelessWidget {
@@ -11,6 +12,14 @@ class StatTile extends StatelessWidget {
   final VoidCallback? onIncrement; // +/- opcional para stats numéricos
   final VoidCallback? onDecrement; // +/- opcional para stats numéricos
 
+  /// Valor com bônus de habilidades ativas (simulação visual).
+  /// null = sem bônus, exibição normal.
+  final double? boostedValue;
+
+  /// Margem do card. null = a de sempre (1 status por linha). Em 2+ colunas a
+  /// tela passa uma margem menor, senão o vão do meio fica com 24px.
+  final EdgeInsetsGeometry? margin;
+
   const StatTile({
     super.key,
     required this.stat,
@@ -18,6 +27,8 @@ class StatTile extends StatelessWidget {
     this.onDelete,
     this.onIncrement,
     this.onDecrement,
+    this.boostedValue,
+    this.margin,
   });
 
   Color get _typeColor {
@@ -36,7 +47,8 @@ class StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: margin ??
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -60,16 +72,19 @@ class StatTile extends StatelessWidget {
                         fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                 ),
+                Icon(stat.type.icon, size: 14, color: _typeColor),
+                const SizedBox(width: 3),
                 Text(
                   stat.type.label,
                   style: TextStyle(
                       fontSize: 11,
-                      color: _typeColor.withOpacity(0.9),
+                      color: _typeColor,
                       fontWeight: FontWeight.w600),
                 ),
                 if (onEdit != null)
                   IconButton(
                     icon: const Icon(Icons.edit, size: 16),
+                    tooltip: 'Editar "${stat.name}"',
                     onPressed: onEdit,
                     visualDensity: VisualDensity.compact,
                     padding: EdgeInsets.zero,
@@ -77,6 +92,7 @@ class StatTile extends StatelessWidget {
                 if (onDelete != null)
                   IconButton(
                     icon: const Icon(Icons.close, size: 16),
+                    tooltip: 'Apagar "${stat.name}"',
                     onPressed: onDelete,
                     visualDensity: VisualDensity.compact,
                     padding: EdgeInsets.zero,
@@ -89,7 +105,7 @@ class StatTile extends StatelessWidget {
                 stat.triggerText ?? '',
                 style: TextStyle(
                     fontSize: 13,
-                    color: Colors.white.withOpacity(0.85),
+                    color: Colors.white.withValues(alpha:0.85),
                     fontStyle: FontStyle.italic),
               )
             else if (stat.type == StatType.formula)
@@ -122,10 +138,27 @@ class StatTile extends StatelessWidget {
                     ),
                 ],
               ),
+            if (boostedValue != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                '⚡ com habilidades: ${_fmtBoosted(boostedValue!)}',
+                style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.greenAccent,
+                    fontWeight: FontWeight.w600),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  String _fmtBoosted(double v) {
+    // Mesma precisão do displayValue: number 2 casas, percent 1, inteiro 0.
+    final s = v.toStringAsFixed(
+        v % 1 == 0 ? 0 : (stat.type == StatType.number ? 2 : 1));
+    return stat.type == StatType.percent ? '$s%' : s;
   }
 }
 
@@ -140,9 +173,9 @@ class _FormulaDisplay extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha:0.08),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha:0.3)),
       ),
       child: Row(
         children: [

@@ -1,8 +1,10 @@
 import '../models/game_group.dart';
 import '../models/character.dart';
+import '../models/character_ability.dart';
 import '../models/character_stat.dart';
 import '../models/group_stat_template.dart';
 import '../models/skill_node.dart';
+import '../models/unit_type_label.dart';
 import 'database_helper.dart';
 
 /// Repositório principal — acesso a dados via SQLite.
@@ -43,6 +45,29 @@ class TrackerRepository {
         .whereType<String>()
         .toList();
   }
+
+  /// Caminhos de foto em uso por algum PERSONAGEM (v10).
+  Future<List<String>> getAllCharacterIconPaths() async {
+    final db = await DatabaseHelper.instance.database;
+    final rows = await db.query(
+      'characters',
+      columns: ['iconImagePath'],
+      where: 'iconImagePath IS NOT NULL',
+    );
+    return rows
+        .map((r) => r['iconImagePath'] as String?)
+        .whereType<String>()
+        .toList();
+  }
+
+  /// TODAS as fotos em uso (grupos + personagens) — é esta lista que a
+  /// varredura de órfãos usa. Existe como método único de propósito: as duas
+  /// fotos moram na MESMA pasta interna, então varrer com só uma das listas
+  /// apagaria as fotos da outra. Quem criar um 3º dono de foto acrescenta aqui.
+  Future<List<String>> getAllIconImagePathsInUse() async => [
+        ...await getAllIconImagePaths(),
+        ...await getAllCharacterIconPaths(),
+      ];
 
   /// Retorna um grupo pelo id, ou null se não existir.
   Future<GameGroup?> getGroupById(int id) async {
@@ -263,6 +288,82 @@ class TrackerRepository {
   /// character_stats — chamado ao criar um personagem novo. É uma cópia de
   /// valores (não referência): mudanças futuras no template não afetam o
   /// personagem.
+  // ─── CharacterAbility ─────────────────────────────────────────────────────
+
+  Future<List<CharacterAbility>> getAbilitiesByCharacter(
+      int characterId) async {
+    final db = await DatabaseHelper.instance.database;
+    final rows = await db.query(
+      'character_abilities',
+      where: 'characterId = ?',
+      whereArgs: [characterId],
+      orderBy: 'sortOrder ASC',
+    );
+    return rows.map(CharacterAbility.fromMap).toList();
+  }
+
+  Future<CharacterAbility> insertAbility(CharacterAbility ability) async {
+    final db = await DatabaseHelper.instance.database;
+    final id = await db.insert('character_abilities', ability.toMap());
+    return ability.copyWith(id: id);
+  }
+
+  Future<void> updateAbility(CharacterAbility ability) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.update(
+      'character_abilities',
+      ability.toMap(),
+      where: 'id = ?',
+      whereArgs: [ability.id],
+    );
+  }
+
+  Future<void> deleteAbility(int id) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.delete('character_abilities', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ─── UnitTypeLabel (nomes dos tipos por jogo) ─────────────────────────────
+
+  /// Nomes definidos DIRETAMENTE em [groupId] (sem herança).
+  Future<List<UnitTypeLabel>> getTypeLabelsByGroup(int groupId) async {
+    final db = await DatabaseHelper.instance.database;
+    final rows = await db.query('unit_type_labels',
+        where: 'groupId = ?', whereArgs: [groupId]);
+    return rows.map(UnitTypeLabel.fromMap).toList();
+  }
+
+  /// Nomes em vigor para [groupId]: os próprios têm prioridade e o que faltar
+  /// é herdado do ancestral mais próximo que tiver — assim o dono renomeia uma
+  /// vez no jogo e vale nos sub-grupos todos. Mesmo corte de ciclo dos
+  /// templates (parentId corrompido não trava o app).
+  Future<UnitTypeNames> getEffectiveTypeNames(int groupId) async {
+    final byKey = <String, UnitTypeLabel>{};
+    final visited = <int>{};
+    int? currentId = groupId;
+    while (currentId != null && visited.add(currentId)) {
+      for (final l in await getTypeLabelsByGroup(currentId)) {
+        byKey.putIfAbsent(l.typeKey, () => l); // o mais próximo vence
+      }
+      final group = await getGroupById(currentId);
+      currentId = group?.parentId;
+    }
+    return UnitTypeNames(byKey);
+  }
+
+  /// Grava/atualiza o nome de um tipo (UNIQUE(groupId,typeKey) troca sozinho).
+  Future<void> upsertTypeLabel(UnitTypeLabel label) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.insert('unit_type_labels', label.toMap()..remove('id'));
+  }
+
+  /// Volta um tipo para o nome padrão do app.
+  Future<void> deleteTypeLabel(int groupId, String typeKey) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.delete('unit_type_labels',
+        where: 'groupId = ? AND typeKey = ?', whereArgs: [groupId, typeKey]);
+  }
+
   /// [onlyTemplateIds]: se informado, copia apenas os templates com esses ids
   /// (escolha feita nas caixinhas do dialog de criação). null = todos (padrão).
   Future<void> applyGroupTemplatesToCharacter(

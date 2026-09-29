@@ -17,6 +17,10 @@ class Character {
   /// Nível atual do personagem/herói (default: 1).
   final int level;
 
+  /// Foto do personagem: caminho do PNG guardado DENTRO do app (v10).
+  /// null = usa o emoji do tipo como fallback. Nunca viaja no backup JSON.
+  final String? iconImagePath;
+
   const Character({
     this.id,
     required this.groupId,
@@ -27,6 +31,7 @@ class Character {
     required this.createdAt,
     this.characterType = CharacterType.soldadoNormal,
     this.level = 1,
+    this.iconImagePath,
   }) : starRank = starRank ?? const StarRank();
 
   Character copyWith({
@@ -40,6 +45,8 @@ class Character {
     DateTime? createdAt,
     CharacterType? characterType,
     int? level,
+    String? iconImagePath,
+    bool clearIconImage = false,
   }) =>
       Character(
         id: id ?? this.id,
@@ -51,19 +58,25 @@ class Character {
         createdAt: createdAt ?? this.createdAt,
         characterType: characterType ?? this.characterType,
         level: level ?? this.level,
+        iconImagePath:
+            clearIconImage ? null : (iconImagePath ?? this.iconImagePath),
       );
 
   Map<String, dynamic> toMap() => {
         if (id != null) 'id': id,
         'groupId': groupId,
         'name': name,
-        if (role != null) 'role': role,
-        if (notes != null) 'notes': notes,
+        // Campos opcionais entram SEMPRE (mesmo null): num UPDATE, chave
+        // ausente deixa o valor antigo no banco — limpar a função/nota/foto
+        // não pegava. Mesmo padrão do GameGroup.
+        'role': role,
+        'notes': notes,
         'starStars': starRank.stars,
         'starSubLevel': starRank.subLevel,
         'createdAt': createdAt.toIso8601String(),
         'characterType': characterType.dbValue,
         'level': level,
+        'iconImagePath': iconImagePath,
       };
 
   factory Character.fromMap(Map<String, dynamic> map) => Character(
@@ -80,5 +93,6 @@ class Character {
         characterType:
             CharacterTypeX.fromString(map['characterType'] as String?),
         level: map['level'] as int? ?? 1,
+        iconImagePath: map['iconImagePath'] as String?,
       );
 }

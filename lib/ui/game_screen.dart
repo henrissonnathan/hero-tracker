@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../models/game_group.dart';
 import '../models/character.dart';
@@ -5,7 +6,9 @@ import '../models/character_type.dart';
 import '../models/content_category.dart';
 import '../models/group_stat_template.dart';
 import '../models/stat_type.dart';
+import '../models/unit_type_label.dart';
 import '../repositories/tracker_repository.dart';
+import '../services/icon_image_store.dart';
 import 'character_screen.dart';
 import 'skill_tree_screen.dart';
 import 'stats_screen.dart';
@@ -30,6 +33,9 @@ class _GameScreenState extends State<GameScreen> {
   bool _loading = true;
   ContentCategory? _selectedCategory; // null = todos
 
+  /// Como ESTE jogo chama os tipos de unidade (ex.: "Herói" → "Comandante").
+  UnitTypeNames _typeNames = UnitTypeNames.padrao;
+
   @override
   void initState() {
     super.initState();
@@ -49,14 +55,28 @@ class _GameScreenState extends State<GameScreen> {
     final inherited = templates.isEmpty && _group.parentId != null
         ? await TrackerRepository.instance.getEffectiveTemplates(_group.id!)
         : <GroupStatTemplate>[];
-    if (mounted)
+    final typeNames = await TrackerRepository.instance
+        .getEffectiveTypeNames(_group.id!);
+    if (mounted) {
       setState(() {
         _characters = chars;
         _subGroups = subs;
         _templates = templates;
         _inheritedTemplates = inherited;
+        _typeNames = typeNames;
         _loading = false;
       });
+    }
+  }
+
+  /// Renomear os tipos de unidade deste jogo (sem código).
+  Future<void> _editTypeNames() async {
+    final mudou = await showDialog<bool>(
+      context: context,
+      builder: (_) =>
+          _TypeNamesDialog(groupId: _group.id!, names: _typeNames),
+    );
+    if (mudou == true) _load();
   }
 
   Future<void> _addSubGroup() async {
@@ -134,6 +154,7 @@ class _GameScreenState extends State<GameScreen> {
       builder: (_) => _CharacterDialog(
         groupId: _group.id!,
         templates: effective,
+        names: _typeNames,
         onTemplateSelection: (ids) => chosen = ids,
       ),
     );
@@ -153,10 +174,16 @@ class _GameScreenState extends State<GameScreen> {
   Future<void> _editCharacter(Character c) async {
     final result = await showDialog<Character>(
       context: context,
-      builder: (_) => _CharacterDialog(groupId: _group.id!, initial: c),
+      builder: (_) =>
+          _CharacterDialog(groupId: _group.id!, initial: c, names: _typeNames),
     );
     if (result != null) {
       await TrackerRepository.instance.updateCharacter(result);
+      // Foto antiga trocada/removida → apaga o PNG interno que ficou órfão.
+      final oldIcon = c.iconImagePath;
+      if (oldIcon != null && oldIcon != result.iconImagePath) {
+        IconImageStore.deleteIcon(oldIcon);
+      }
       setState(() {
         final i = _characters.indexWhere((x) => x.id == c.id);
         if (i >= 0) _characters[i] = result;
@@ -183,6 +210,7 @@ class _GameScreenState extends State<GameScreen> {
     );
     if (ok == true) {
       await TrackerRepository.instance.deleteCharacter(c.id!);
+      IconImageStore.deleteIcon(c.iconImagePath);
       setState(() => _characters.removeWhere((x) => x.id == c.id));
     }
   }
@@ -221,13 +249,15 @@ class _GameScreenState extends State<GameScreen> {
     if (_group.maxHeroesPerSquad != null) {
       final h = counts[CharacterType.heroi] ?? 0;
       if (h > _group.maxHeroesPerSquad!) {
-        warnings.add('Heróis: $h / ${_group.maxHeroesPerSquad} (excedido)');
+        warnings.add('${_typeNames.labelOf(CharacterType.heroi)}: '
+            '$h / ${_group.maxHeroesPerSquad} (excedido)');
       }
     }
     if (_group.maxCommandersPerSquad != null) {
       final c = counts[CharacterType.comandante] ?? 0;
       if (c > _group.maxCommandersPerSquad!) {
-        warnings.add('Comandantes: $c / ${_group.maxCommandersPerSquad} (excedido)');
+        warnings.add('${_typeNames.labelOf(CharacterType.comandante)}: '
+            '$c / ${_group.maxCommandersPerSquad} (excedido)');
       }
     }
     return warnings.isEmpty ? null : warnings.join(' • ');
@@ -251,16 +281,6 @@ class _GameScreenState extends State<GameScreen> {
             tooltip: 'Árvore de habilidades',
           ),
           IconButton(
-            icon: const Icon(Icons.tune),
-            onPressed: _editSquadConfig,
-            tooltip: 'Configurar esquadrão',
-          ),
-          IconButton(
-            icon: const Icon(Icons.auto_awesome),
-            onPressed: _applyStrategyTemplate,
-            tooltip: 'Template estratégico (Heróis + Tropas + Pesquisa + Construção)',
-          ),
-          IconButton(
             icon: const Icon(Icons.create_new_folder_outlined),
             onPressed: _addSubGroup,
             tooltip: 'Novo sub-grupo',
@@ -269,6 +289,27 @@ class _GameScreenState extends State<GameScreen> {
             icon: const Icon(Icons.person_add),
             onPressed: _addCharacter,
             tooltip: 'Novo personagem',
+          ),
+          // Os ajustes do jogo ficam juntos aqui — a barra tinha 5 ícones e
+          // não cabia na largura de celular.
+          PopupMenuButton<String>(
+            tooltip: 'Ajustes do jogo',
+            onSelected: (v) {
+              if (v == 'nomes') _editTypeNames();
+              if (v == 'esquadrao') _editSquadConfig();
+              if (v == 'template') _applyStrategyTemplate();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                  value: 'nomes',
+                  child: Text('Nomes dos tipos de unidade')),
+              PopupMenuItem(
+                  value: 'esquadrao', child: Text('Configurar esquadrão')),
+              PopupMenuDivider(),
+              PopupMenuItem(
+                  value: 'template',
+                  child: Text('Template estratégico (4 sub-grupos)')),
+            ],
           ),
         ],
       ),
@@ -290,6 +331,7 @@ class _GameScreenState extends State<GameScreen> {
                   _SquadSummaryBar(
                     group: _group,
                     typeCounts: _typeCounts,
+                    names: _typeNames,
                     warning: _squadWarning,
                   ),
 
@@ -375,6 +417,7 @@ class _GameScreenState extends State<GameScreen> {
                     _characters.length,
                     (i) => _CharacterCard(
                       character: _characters[i],
+                      names: _typeNames,
                       onTap: () async {
                         await Navigator.push(
                           context,
@@ -443,11 +486,13 @@ class _StatsNavCard extends StatelessWidget {
 class _SquadSummaryBar extends StatelessWidget {
   final GameGroup group;
   final Map<CharacterType, int> typeCounts;
+  final UnitTypeNames names;
   final String? warning;
 
   const _SquadSummaryBar({
     required this.group,
     required this.typeCounts,
+    required this.names,
     this.warning,
   });
 
@@ -461,13 +506,13 @@ class _SquadSummaryBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: warning != null
-            ? Colors.orange.withOpacity(0.12)
-            : Theme.of(context).colorScheme.primary.withOpacity(0.08),
+            ? Colors.orange.withValues(alpha:0.12)
+            : Theme.of(context).colorScheme.primary.withValues(alpha:0.08),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: warning != null
-              ? Colors.orange.withOpacity(0.4)
-              : Theme.of(context).colorScheme.primary.withOpacity(0.2),
+              ? Colors.orange.withValues(alpha:0.4)
+              : Theme.of(context).colorScheme.primary.withValues(alpha:0.2),
         ),
       ),
       child: Column(
@@ -485,7 +530,7 @@ class _SquadSummaryBar extends StatelessWidget {
               const Spacer(),
               if (group.maxHeroesPerSquad != null)
                 _TypeChip(
-                  emoji: '⚔️',
+                  emoji: names.emojiOf(CharacterType.heroi),
                   count: heroes,
                   max: group.maxHeroesPerSquad!,
                   exceeded: heroes > group.maxHeroesPerSquad!,
@@ -493,7 +538,7 @@ class _SquadSummaryBar extends StatelessWidget {
               if (group.maxCommandersPerSquad != null) ...[
                 const SizedBox(width: 6),
                 _TypeChip(
-                  emoji: '👑',
+                  emoji: names.emojiOf(CharacterType.comandante),
                   count: commanders,
                   max: group.maxCommandersPerSquad!,
                   exceeded: commanders > group.maxCommandersPerSquad!,
@@ -532,8 +577,8 @@ class _TypeChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: exceeded
-            ? Colors.orange.withOpacity(0.2)
-            : Colors.grey.withOpacity(0.15),
+            ? Colors.orange.withValues(alpha:0.2)
+            : Colors.grey.withValues(alpha:0.15),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
@@ -552,12 +597,14 @@ class _TypeChip extends StatelessWidget {
 
 class _CharacterCard extends StatelessWidget {
   final Character character;
+  final UnitTypeNames names;
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _CharacterCard({
     required this.character,
+    required this.names,
     required this.onTap,
     required this.onEdit,
     required this.onDelete,
@@ -586,10 +633,12 @@ class _CharacterCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              // Emoji do tipo
-              Text(
-                character.characterType.emoji,
-                style: const TextStyle(fontSize: 22),
+              // Foto do personagem — sem foto, cai no emoji do tipo.
+              GroupIcon(
+                imagePath: character.iconImagePath,
+                emoji: names.emojiOf(character.characterType),
+                size: 44,
+                emojiSize: 22,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -608,11 +657,11 @@ class _CharacterCard extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(
-                            color: tc.withOpacity(0.15),
+                            color: tc.withValues(alpha:0.15),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            character.characterType.label,
+                            names.labelOf(character.characterType),
                             style: TextStyle(
                                 fontSize: 11,
                                 color: tc,
@@ -651,13 +700,14 @@ class _CharacterCard extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
-                          '👑 Não entra em batalha diretamente',
+                          '${names.emojiOf(CharacterType.comandante)} '
+                          'Não entra em batalha diretamente',
                           style: TextStyle(
                               fontSize: 11,
                               color: Theme.of(context)
                                   .colorScheme
                                   .primary
-                                  .withOpacity(0.7)),
+                                  .withValues(alpha:0.7)),
                         ),
                       ),
                   ],
@@ -772,6 +822,9 @@ class _CharacterDialog extends StatefulWidget {
   final int groupId;
   final Character? initial;
 
+  /// Nomes dos tipos neste jogo (o seletor de tipo usa eles).
+  final UnitTypeNames names;
+
   /// Status do modelo do grupo (efetivos) — exibidos com caixinhas na CRIAÇÃO
   /// para escolher quais o personagem terá. Vazio/edição: seção não aparece.
   final List<GroupStatTemplate> templates;
@@ -782,6 +835,7 @@ class _CharacterDialog extends StatefulWidget {
   const _CharacterDialog({
     required this.groupId,
     this.initial,
+    this.names = UnitTypeNames.padrao,
     this.templates = const [],
     this.onTemplateSelection,
   });
@@ -796,12 +850,21 @@ class _CharacterDialogState extends State<_CharacterDialog> {
   late CharacterType _type;
   late Set<int> _selectedTemplateIds;
 
+  String? _imagePath;
+  bool _importing = false;
+  String? _pickError;
+
+  /// PNGs internos criados por ESTE dialog — os que não forem salvos são
+  /// apagados no dispose (cancelar, fechar, trocar de foto).
+  final List<String> _imported = [];
+
   @override
   void initState() {
     super.initState();
     _name = TextEditingController(text: widget.initial?.name ?? '');
     _role = TextEditingController(text: widget.initial?.role ?? '');
     _type = widget.initial?.characterType ?? CharacterType.soldadoNormal;
+    _imagePath = widget.initial?.iconImagePath;
     // Todos marcados por padrão.
     _selectedTemplateIds =
         widget.templates.map((t) => t.id).whereType<int>().toSet();
@@ -809,9 +872,48 @@ class _CharacterDialogState extends State<_CharacterDialog> {
 
   @override
   void dispose() {
+    for (final path in _imported) {
+      IconImageStore.deleteIcon(path);
+    }
     _name.dispose();
     _role.dispose();
     super.dispose();
+  }
+
+  /// Mesmo cofre da foto de grupo: valida o tamanho ANTES de decodificar e
+  /// grava um PNG novo, gerado pelo app, na pasta interna.
+  Future<void> _pickImage() async {
+    if (_importing) return;
+    setState(() {
+      _importing = true;
+      _pickError = null;
+    });
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: IconImageStore.allowedExtensions,
+      );
+      final source = result?.files.single.path;
+      if (source == null) return; // usuário cancelou
+      final imported = await IconImageStore.importIcon(source);
+      if (!mounted) {
+        // Dialog fechou durante o import — apaga o PNG para não órfãozar.
+        IconImageStore.deleteIcon(imported);
+        return;
+      }
+      if (imported == null) {
+        setState(() => _pickError =
+            'Arquivo recusado — escolha uma imagem válida '
+            '(png, jpg, webp, bmp ou gif, até 20 MB).');
+        return;
+      }
+      setState(() {
+        _imported.add(imported);
+        _imagePath = imported;
+      });
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
   }
 
   @override
@@ -838,6 +940,39 @@ class _CharacterDialogState extends State<_CharacterDialog> {
                   hintText: 'ex.: Tank, DPS, Support',
                   border: OutlineInputBorder()),
             ),
+            const SizedBox(height: 12),
+            // Foto do personagem (opcional) — vira PNG interno do app.
+            Row(
+              children: [
+                GroupIcon(
+                    imagePath: _imagePath,
+                    emoji: widget.names.emojiOf(_type),
+                    size: 44,
+                    emojiSize: 26),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _importing ? null : _pickImage,
+                    icon: const Icon(Icons.image_outlined, size: 18),
+                    label:
+                        Text(_imagePath == null ? 'Usar foto' : 'Trocar foto'),
+                  ),
+                ),
+                if (_imagePath != null)
+                  IconButton(
+                    tooltip: 'Remover foto (voltar ao emoji)',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => setState(() => _imagePath = null),
+                  ),
+              ],
+            ),
+            if (_pickError != null) ...[
+              const SizedBox(height: 8),
+              Text(_pickError!,
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12)),
+            ],
             const SizedBox(height: 14),
             Text('Tipo de unidade',
                 style: TextStyle(
@@ -862,7 +997,7 @@ class _CharacterDialogState extends State<_CharacterDialog> {
                             ? Theme.of(context)
                                 .colorScheme
                                 .primary
-                                .withOpacity(0.15)
+                                .withValues(alpha:0.15)
                             : Colors.transparent,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
@@ -875,10 +1010,10 @@ class _CharacterDialogState extends State<_CharacterDialog> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(t.emoji,
+                          Text(widget.names.emojiOf(t),
                               style: const TextStyle(fontSize: 20)),
                           const SizedBox(height: 4),
-                          Text(t.label,
+                          Text(widget.names.labelOf(t),
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: selected
@@ -896,7 +1031,9 @@ class _CharacterDialogState extends State<_CharacterDialog> {
             if (_type == CharacterType.comandante) ...[
               const SizedBox(height: 8),
               Text(
-                '👑 Comandantes não entram em batalha diretamente, mas podem ser monitorados e têm notas.',
+                '${widget.names.emojiOf(CharacterType.comandante)} '
+                '${widget.names.labelOf(CharacterType.comandante)} não entra '
+                'em batalha diretamente, mas pode ser monitorado e ter notas.',
                 style: TextStyle(
                     fontSize: 11, color: Colors.grey.shade500),
               ),
@@ -943,6 +1080,8 @@ class _CharacterDialogState extends State<_CharacterDialog> {
           onPressed: () {
             if (_name.text.trim().isEmpty) return;
             widget.onTemplateSelection?.call(_selectedTemplateIds);
+            // Foto salva sai da lista de limpeza do dispose.
+            if (_imagePath != null) _imported.remove(_imagePath);
             final base = widget.initial ??
                 Character(
                   groupId: widget.groupId,
@@ -956,11 +1095,149 @@ class _CharacterDialogState extends State<_CharacterDialog> {
                 role: _role.text.trim().isEmpty ? null : _role.text.trim(),
                 clearRole: _role.text.trim().isEmpty,
                 characterType: _type,
+                iconImagePath: _imagePath,
+                clearIconImage: _imagePath == null,
               ),
             );
           },
           child: Text(isEdit ? 'Salvar' : 'Criar'),
         ),
+      ],
+    );
+  }
+}
+
+// ─── Dialog: nomes dos tipos de unidade (por jogo) ───────────────────────────
+
+/// Renomeia os 3 tipos de unidade SEM tocar em código: cada jogo chama do seu
+/// jeito ("Herói" → "Comandante" no RoK, "Governante", "Oficial"…).
+/// Por dentro nada muda — nenhum personagem é migrado.
+class _TypeNamesDialog extends StatefulWidget {
+  final int groupId;
+  final UnitTypeNames names;
+  const _TypeNamesDialog({required this.groupId, required this.names});
+
+  @override
+  State<_TypeNamesDialog> createState() => _TypeNamesDialogState();
+}
+
+class _TypeNamesDialogState extends State<_TypeNamesDialog> {
+  final _labels = <CharacterType, TextEditingController>{};
+  final _emojis = <CharacterType, TextEditingController>{};
+  bool _salvando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final t in CharacterType.values) {
+      _labels[t] = TextEditingController(text: widget.names.labelOf(t));
+      _emojis[t] = TextEditingController(text: widget.names.emojiOf(t));
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _labels.values) {
+      c.dispose();
+    }
+    for (final c in _emojis.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _salvar() async {
+    if (_salvando) return;
+    setState(() => _salvando = true);
+    final repo = TrackerRepository.instance;
+    for (final t in CharacterType.values) {
+      final nome = _labels[t]!.text.trim();
+      final emoji = _emojis[t]!.text.trim();
+      // Voltou a ser igual ao padrão do app → apaga o registro em vez de
+      // guardar uma cópia do padrão (menos lixo, e o padrão volta a valer se
+      // o app mudar).
+      final ehPadrao = (nome.isEmpty || nome == t.label) &&
+          (emoji.isEmpty || emoji == t.emoji);
+      if (ehPadrao) {
+        await repo.deleteTypeLabel(widget.groupId, t.dbValue);
+      } else {
+        await repo.upsertTypeLabel(UnitTypeLabel(
+          groupId: widget.groupId,
+          typeKey: t.dbValue,
+          label: nome.isEmpty ? t.label : nome,
+          emoji: emoji.isEmpty ? t.emoji : emoji,
+        ));
+      }
+    }
+    if (mounted) Navigator.pop(context, true);
+  }
+
+  void _restaurar() {
+    setState(() {
+      for (final t in CharacterType.values) {
+        _labels[t]!.text = t.label;
+        _emojis[t]!.text = t.emoji;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nomes dos tipos de unidade'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Cada jogo chama do seu jeito. No Rise of Kingdoms, por exemplo, '
+              '"Herói" é "Comandante". Vale para este jogo e os sub-grupos '
+              'dele — os personagens não mudam.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+            ),
+            const SizedBox(height: 14),
+            for (final t in CharacterType.values) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 62,
+                    child: TextField(
+                      controller: _emojis[t],
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(
+                          labelText: 'Ícone', border: OutlineInputBorder()),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: _labels[t],
+                      decoration: InputDecoration(
+                        labelText: 'Nome',
+                        helperText: 'padrão: ${t.emoji} ${t.label}',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: _salvando ? null : _restaurar,
+            child: const Text('Restaurar padrão')),
+        TextButton(
+            onPressed: _salvando ? null : () => Navigator.pop(context),
+            child: const Text('Cancelar')),
+        ElevatedButton(
+            onPressed: _salvando ? null : _salvar,
+            child: const Text('Salvar')),
       ],
     );
   }
@@ -1137,7 +1414,7 @@ class _SubGroupDialogState extends State<_SubGroupDialog> {
                           ? Theme.of(context)
                               .colorScheme
                               .primary
-                              .withOpacity(0.15)
+                              .withValues(alpha:0.15)
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(

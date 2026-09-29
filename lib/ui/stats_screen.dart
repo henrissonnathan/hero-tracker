@@ -1,10 +1,13 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../models/game_group.dart';
 import '../models/group_stat_template.dart';
 import '../models/stat_type.dart';
 import '../repositories/tracker_repository.dart';
+import '../services/export_service.dart';
 import 'widgets/stat_form_dialog.dart';
+import 'widgets/stat_type_visual.dart';
 
 /// Rótulo da seção para templates sem categoria.
 const _semCategoria = 'Sem categoria';
@@ -64,6 +67,18 @@ class _StatsScreenState extends State<StatsScreen> {
     return list;
   }
 
+  /// Nomes que a fórmula pode usar (os próprios, ou os herdados).
+  List<String> get _statNames =>
+      (_templates.isNotEmpty ? _templates : _inherited)
+          .map((t) => t.name)
+          .toList();
+
+  /// Gatilhos já escritos neste modelo — reusar é um toque no formulário.
+  List<String> get _triggers => _templates
+      .where((t) => t.type == StatType.trigger)
+      .map((t) => t.triggerText ?? '')
+      .toList();
+
   String _catKey(GroupStatTemplate t) {
     final c = (t.category ?? '').trim();
     return c.isEmpty ? _semCategoria : c;
@@ -97,6 +112,8 @@ class _StatsScreenState extends State<StatsScreen> {
         valueLabel: 'Valor padrão',
         showCategory: true,
         categories: _categoryNames,
+        availableStatNames: _statNames,
+        knownTriggers: _triggers,
         initialCategory: presetCategory,
         validateName: (name) => _templates
                 .any((t) => t.name.toLowerCase() == name.toLowerCase())
@@ -120,6 +137,35 @@ class _StatsScreenState extends State<StatsScreen> {
       ),
     );
     setState(() => _templates.add(saved));
+  }
+
+  /// Recebe um pacote JSON e preenche ESTE jogo: status do modelo e
+  /// personagens que ainda não existem. Nada que já existe é sobrescrito.
+  Future<void> _importPack() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      dialogTitle: 'Escolher pacote (modelo + personagens)',
+    );
+    final path = picked?.files.single.path;
+    if (path == null) return; // cancelou
+    final r =
+        await ExportService.instance.importGroupPack(path, widget.group.id!);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(r.message)));
+    if (r.success) _load();
+  }
+
+  Future<void> _exportPack() async {
+    String msg;
+    try {
+      msg = await ExportService.instance.exportGroupPack(widget.group);
+    } catch (_) {
+      msg = 'Não foi possível salvar o pacote (verifique permissão/espaço).';
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   /// Cria uma categoria/sub-grupo vazia (o usuário adiciona os status depois).
@@ -163,6 +209,8 @@ class _StatsScreenState extends State<StatsScreen> {
         valueLabel: 'Valor padrão',
         showCategory: true,
         categories: _categoryNames,
+        availableStatNames: _statNames,
+        knownTriggers: _triggers,
         initial: StatFormResult(
           name: template.name,
           type: template.type,
@@ -287,6 +335,32 @@ class _StatsScreenState extends State<StatsScreen> {
             tooltip: 'Nova categoria / sub-grupo',
             onPressed: _addCategory,
           ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.import_export),
+            tooltip: 'Pacote JSON (modelo + personagens)',
+            onSelected: (v) {
+              if (v == 'importar') _importPack();
+              if (v == 'exportar') _exportPack();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'importar',
+                child: ListTile(
+                  leading: Icon(Icons.file_download_outlined),
+                  title: Text('Receber pacote'),
+                  subtitle: Text('modelo + personagens de um arquivo'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'exportar',
+                child: ListTile(
+                  leading: Icon(Icons.file_upload_outlined),
+                  title: Text('Enviar pacote deste jogo'),
+                  subtitle: Text('salva um arquivo .json'),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: _loading
@@ -330,10 +404,12 @@ class _StatsScreenState extends State<StatsScreen> {
           const SizedBox(height: 12),
           ..._inherited.map((t) => ListTile(
                 dense: true,
-                leading: Icon(Icons.link,
-                    size: 18, color: Colors.grey.shade600),
-                title: Text('${t.name} · ${t.type.label}',
+                leading: StatTypeBadge(t.type, size: 26),
+                title: Text(t.name,
                     style: TextStyle(color: Colors.grey.shade400)),
+                subtitle: Text('${t.type.label} · herdado do grupo pai'),
+                trailing: Icon(Icons.link,
+                    size: 18, color: Colors.grey.shade500),
               )),
         ],
       );
@@ -344,7 +420,8 @@ class _StatsScreenState extends State<StatsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('📊', style: TextStyle(fontSize: 48)),
+            Icon(Icons.bar_chart_rounded,
+                size: 56, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 12),
             Text('Nenhum status ainda',
                 style: Theme.of(context).textTheme.titleMedium),
@@ -390,6 +467,9 @@ class _CategorySection extends StatelessWidget {
           children: [
             Row(
               children: [
+                Icon(Icons.folder_outlined,
+                    size: 18, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(title,
                       style: TextStyle(
@@ -402,44 +482,58 @@ class _CategorySection extends StatelessWidget {
                     icon: const Icon(Icons.add, size: 20),
                     tooltip: 'Adicionar status nesta categoria',
                     onPressed: onAddHere,
-                    visualDensity: VisualDensity.compact,
                     color: Theme.of(context).colorScheme.primary,
                   ),
                 IconButton(
                   icon: const Icon(Icons.drive_file_rename_outline, size: 18),
                   tooltip: 'Renomear categoria',
                   onPressed: onRename,
-                  visualDensity: VisualDensity.compact,
                   color: Colors.grey.shade400,
                 ),
               ],
             ),
             const Divider(height: 8),
-            ...templates.map((t) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text('${t.name} · ${t.type.label}',
-                            style: const TextStyle(fontSize: 13)),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined, size: 16),
-                        onPressed: () => onEdit(t),
-                        color: Colors.grey.shade400,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                            minWidth: 32, minHeight: 32),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 16),
-                        onPressed: () => onDelete(t),
-                        color: Colors.red.shade300,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                            minWidth: 32, minHeight: 32),
-                      ),
-                    ],
+            // A linha inteira edita (alvo grande); o lixo fica à parte.
+            ...templates.map((t) => InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => onEdit(t),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        StatTypeBadge(t.type),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(t.name,
+                                  style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600)),
+                              Text(t.type.label,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant)),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 20),
+                          tooltip: 'Editar "${t.name}"',
+                          onPressed: () => onEdit(t),
+                          color: Colors.grey.shade400,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 20),
+                          tooltip: 'Apagar "${t.name}"',
+                          onPressed: () => onDelete(t),
+                          color: Colors.red.shade300,
+                        ),
+                      ],
+                    ),
                   ),
                 )),
             if (templates.isEmpty)

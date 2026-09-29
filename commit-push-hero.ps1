@@ -1,7 +1,17 @@
+param([string]$Message)
+
 Set-Location $PSScriptRoot
 
+# Gate de qualidade (Fase 1): nada de commit com analyze/teste quebrado.
+& PowerShell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\testes.ps1"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "TESTAR falhou - commit abortado." -ForegroundColor Red
+    Read-Host "Pressione Enter para fechar"
+    exit 1
+}
+
 Write-Host ""
-Write-Host "=== Hero Tracker — Commit + Push (tipos de unidade) ===" -ForegroundColor Cyan
+Write-Host "=== Hero Tracker — Commit + Push ===" -ForegroundColor Cyan
 
 # Configura user se não estiver configurado
 $email = (git config user.email 2>$null).Trim()
@@ -22,30 +32,26 @@ if (-not (Test-Path $tokenFile)) { $tokenFile = ".github_token" }
 $token = ""
 if (Test-Path $tokenFile) { $token = (Get-Content $tokenFile -Raw).Trim() }
 
-# Adiciona todos os arquivos modificados
+# Adiciona TODOS os arquivos versionaveis (build/ e .dart_tool/ ja no .gitignore)
 Write-Host "Adicionando arquivos..." -ForegroundColor Yellow
-git add lib/models/character_type.dart
-git add lib/models/character.dart
-git add lib/models/game_group.dart
-git add lib/repositories/database_helper.dart
-git add lib/ui/game_screen.dart
-git add lib/ui/character_screen.dart
+git add -A
 
-# Verifica se há algo para commitar
-$status = git status --porcelain
-if ([string]::IsNullOrWhiteSpace($status)) {
-    Write-Host "Nada para commitar — já está atualizado." -ForegroundColor Green
+# Nada staged? nada a commitar (olha o INDEX, nao a arvore)
+git diff --cached --quiet
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Nada para commitar — ja esta atualizado." -ForegroundColor Green
 } else {
+    # Mensagem: parametro -Message, senao pergunta.
+    if ([string]::IsNullOrWhiteSpace($Message)) {
+        $Message = Read-Host "Mensagem do commit"
+    }
+    if ([string]::IsNullOrWhiteSpace($Message)) {
+        Write-Host "Sem mensagem — commit cancelado." -ForegroundColor Red
+        Read-Host "Pressione Enter para fechar"
+        exit 1
+    }
     Write-Host "Commitando..." -ForegroundColor Yellow
-    git commit -m "feat: tipos de unidade (soldado/heroi/comandante) + config de esquadrao
-
-- Novo enum CharacterType: soldadoNormal, heroi, comandante
-- Personagens agora tem tipo de unidade com emoji e cor distintos
-- GameGroup: maxHeroesPerSquad e maxCommandersPerSquad configuraveis
-- Barra de resumo do esquadrao mostra contagem vs limite, alerta se excedido
-- Dialog de criacao/edicao de personagem atualizado com seletor de tipo visual
-- Comandantes exibem nota 'nao entra em batalha diretamente'
-- Migracao DB v2->v3 para novos campos"
+    git commit -m $Message
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Commit falhou!" -ForegroundColor Red
         Read-Host "Pressione Enter para fechar"

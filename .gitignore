@@ -26,3 +26,6 @@ android/gradle/
 # OS
 .DS_Store
 Thumbs.db
+
+# Nível do caveman escolhido nesta máquina (lido pelo hook .claude/hooks)
+.claude/caveman/nivel

@@ -15,6 +15,7 @@
 
 ```
 ALWAYS_ON — entram em TODA sessão:
+  PROD  | hero-tracker-produto     |   | visão do produto — fonte da verdade do OBJETIVO (mapeador de jogos) — skill DO PROJETO: .claude/skills/hero-tracker-produto/
   GOVN  | skill-governor           |   | decisão-arquitetura | .agents/skills/* | SKILL_MAP.json
   HEAL  | skill-heal               | ⚙ | *.dart | schema-db | .agents/*
   NEXM  | nexus-memory-protocol    |   | sempre (ignorar DEP: arquitetura-formulario-trproc)
@@ -44,6 +45,9 @@ CONTEXTUAIS — carregam só quando o gatilho dispara:
   skill-creator                  | SKCR*⚙ | criar-skill|editar-skill|.agents/skills/*   | pipeline de criação/edição de skills do kit
   skills-vs-agentes              | SKVA   | decidir-skill-ou-agente|planejar-automacao  | skill-first, anti-overengineering
   claude-workflows               | FLOW   | workflow|paralelizar-agentes|escalar         | fan-out multi-agente (raro aqui: repo pequeno)
+  caveman (+ família)            | CAVE   | /caveman|economizar-token|responde-curto     | resposta enxuta, nível full (DO PROJETO: .claude/skills/caveman*)
+    caveman-compress|-commit|-review|-help|-stats|cavecrew → mesma pasta; agents cavecrew-* em .claude/agents/
+    hook .claude/hooks/caveman_lembrete.py (UserPromptSubmit) lembra o nível; nível em .claude/caveman/nivel (fora do git)
   segundo-cerebro-obsidian       | CERE   | obsidian|vault|/segundo-cerebro             | PKM pessoal (manual, nunca em sessão de código)
 
 DESCARTADAS — TRPROC/Flask/web, NÃO carregar no hero-tracker:
@@ -76,10 +80,18 @@ BOOT (adaptação p/ hero-tracker):
 
 ## 🏗️ CONTEXTO DO PROJETO
 
-### Propósito
-Tracker para entusiastas de jogos estratégicos mobile (RoK, Fate War, AoC, etc.)
-que precisam planejar builds de heróis, progressão de tropas, árvores de pesquisa
-e níveis de construção — tudo em um só lugar, 100% offline/local.
+### Propósito (fonte da verdade: skill PROD do projeto — .claude/skills/hero-tracker-produto)
+**Mapeador de jogos**: qualquer pessoa, SEM programar, mapeia como um jogo
+funciona por dentro (números, bônus %, fórmulas, gatilhos, habilidades) e usa o
+mapa para montar e COMPARAR builds de heróis em conjunto. Começa por estratégia
+mobile (RoK/CoD é o caso fácil), serve para qualquer jogo (inclusive RPG).
+100% offline/local; dados do usuário são sagrados.
+Os dados alimentarão um 2º app futuro de TESTE/simulação via JSON documentado
+com validação rígida (formato = contrato oficial estável).
+Tipos de status = lentes de mapeamento: gatilho (o que deve acontecer p/ ter
+efeito), número (recursos/custos/tempo), porcentagem (bônus %), cálculo
+(fórmulas entre stats). Regra de decisão: toda feature serve ao MAPEAMENTO ou
+à COMPARAÇÃO — senão, questionar.
 
 ### Stack obrigatória
 - **Framework**: Flutter (Dart) — Android (alvo principal) + Windows desktop (dev/testes no PC)
@@ -96,7 +108,7 @@ lib/
   main.dart
   models/
     character.dart          ← herói/tropa/unidade — tem: name, role, notes, starRank,
-                              characterType, level (v2), groupId
+                              characterType, level (v2), groupId, iconImagePath (v10)
     character_stat.dart     ← atributo dinâmico — tipo: count/percent/number/trigger/formula
     character_type.dart     ← enum: soldadoNormal | heroi | comandante
     content_category.dart   ← enum: heroes | troops | research | building | general (v2)
@@ -104,23 +116,33 @@ lib/
                               maxCommandersPerSquad, contentCategory (v2)
     skill_node.dart         ← nó de árvore de habilidades/pesquisa
     star_rank.dart          ← rank com estrelas + sub-níveis (8 sub/estrela)
-    stat_type.dart          ← enum: count | percent | number | trigger | formula
+    stat_type.dart          ← enum: percent | number | trigger | formula (count removido v8)
+    group_stat_template.dart← template de status do grupo (modelo) + category
+    unit_type_label.dart    ← nome/emoji do tipo por jogo (v11) + UnitTypeNames
+                              (sempre responde: custom ou padrão do enum)
+    character_ability.dart  ← habilidade de herói: descrição+gatilho+efeito+isActive
   repositories/
-    database_helper.dart        ← singleton sqflite — versão atual: 4
+    database_helper.dart        ← singleton sqflite — versão atual: 11
     desktop_database_init.dart  ← ativa FFI em Windows/Linux (no-op em Android)
     tracker_repository.dart     ← CRUD completo: grupos, personagens, stats, skills
   services/
-    export_service.dart     ← exportação de dados
+    export_service.dart     ← export/import JSON (inclui templates+habilidades)
+    icon_image_store.dart   ← fotos seguras (grupo E personagem): valida dimensões,
+                              re-codifica PNG interno; gera avatar do exemplo
+    seed_service.dart       ← mapa de exemplo do Rise of Kingdoms (4 sub-grupos)
   theme/
     app_theme.dart          ← tema Material 3 com dark mode
   ui/
     character_screen.dart   ← tela do personagem: stats dinâmicos, star rank, nível
     game_screen.dart        ← tela do grupo: lista de personagens com filtro por categoria
-    home_screen.dart        ← lista de jogos/grupos raiz
+    home_screen.dart        ← lista de jogos/grupos raiz (foto de grupo)
     skill_tree_screen.dart  ← árvore de habilidades/pesquisa
+    stats_screen.dart       ← tela exclusiva do modelo de status (categorias)
     widgets/
       star_rank_display.dart
-      stat_tile.dart
+      stat_tile.dart        ← + boostedValue (bônus de habilidades ativas)
+      stat_form_dialog.dart ← dialog compartilhado status/template (+categoria)
+      group_icon.dart       ← foto do grupo com fallback emoji
 android/
   app/src/main/
     AndroidManifest.xml
@@ -130,7 +152,38 @@ test/
   widget_test.dart          ← smoke test: HomeScreen carrega do banco (FFI)
 ```
 
-### Schema do banco (versão 4 — fonte da verdade: `database_helper.dart`)
+### Schema do banco (versão 11 — fonte da verdade: `database_helper.dart`)
+
+```
+Tabelas atuais (v11):
+  game_groups            ← + iconImagePath (v5)
+  characters             ← type/level/star + iconImagePath (v10);
+                           characterType vira legado na Fase 9 do roadmap
+  character_stats        ← tipos: number|percent|trigger|formula ("count" removido na v8)
+  group_stat_templates   ← modelo de status por grupo (v6) + category (v7)
+  skill_nodes            ← árvore simples (ganha dono/níveis nas Fases 7-8)
+  character_abilities    ← habilidades de herói (v9): descrição+gatilho+efeito+isActive
+  unit_type_labels       ← nome/emoji que CADA JOGO dá aos 3 tipos (v11).
+                           O enum CharacterType continua interno; só a EXIBIÇÃO
+                           muda. Herda do ancestral (getEffectiveTypeNames).
+
+Migrations incrementais (onUpgrade):
+  v1→v2 parentId/skill_nodes/formulaText · v2→v3 characterType+squad
+  v3→v4 level+contentCategory · v4→v5 iconImagePath · v5→v6 group_stat_templates
+  v6→v7 category (guard PRAGMA) · v7→v8 count→number · v8→v9 character_abilities
+  v9→v10 characters.iconImagePath (foto de herói/tropa)
+  v10→v11 unit_type_labels (renomear tipo de unidade por jogo, sem código)
+Próximas (roadmap v2): targetStatId · game_triggers · tags ...
+
+⚠️ Fotos: grupo E personagem gravam PNG na MESMA pasta interna (group_icons/).
+   A varredura de órfãos SÓ pode usar TrackerRepository.getAllIconImagePathsInUse()
+   — passar só uma das listas apagaria as fotos da outra.
+```
+
+<details>
+<summary>Schema v4 histórico (obsoleto — só referência)</summary>
+
+### (histórico) Schema na versão 4
 
 ```sql
 -- Schema atual (o _onCreate cria direto na v4)
@@ -166,6 +219,8 @@ CREATE TABLE skill_nodes (...);                      -- v2
 -- v2→v3: characters.characterType + game_groups.maxHeroesPerSquad/maxCommandersPerSquad
 -- v3→v4: characters.level + game_groups.contentCategory
 ```
+
+</details>
 
 ---
 
@@ -219,11 +274,20 @@ Sprint 2 ✅ — CharacterType (soldado/herói/comandante) + config de esquadrã
 Sprint 3 ✅ — level no Character + ContentCategory no GameGroup + filtro de categoria na UI
 Sprint 3.5 ✅ — Porte desktop Windows (2026-07-23): windows/ runner + sqflite_common_ffi
               (helper desktop_database_init.dart) + banco em %APPDATA% + smoke test.
-              Pendentes desktop: fonte Nunito offline, wrapper de largura, export FilePicker
-Sprint 4 🔜 — Fórmulas calculadas (StatType.formula avaliador)
-Sprint 5 🔜 — Bônus de comandante propagado para o esquadrão
-Sprint 6 🔜 — Tela de Build Summary (stats + skills planejados em uma tela)
-Sprint 7 🔜 — Polimento + Play Store
+Sprint 3.6 ✅ — Foto de grupo segura (IconImageStore, v5) — 2026-07-23/24
+Sprint 3.7 ✅ — Modelo de status: templates por grupo (v6) + tela exclusiva com
+              categorias (v7) + caixinhas na criação + fluxo modelo-primeiro
+Sprint 3.8 ✅ — Contagem removida (v8) + Habilidades de herói (v9): descrição +
+              gatilho + efeito + toggle de bônus — 2026-07-24
+Sprint 3.9 ✅ — Mapa de exemplo do RoK (SeedService) + tela "Testes do app"
+              (auto-verificada) + FOTO DE HERÓI/TROPA (v10) — 2026-07-25
+Sprint 3.10 ✅ — Correção do dono: comandante NÃO tem Ataque/Defesa/Vida (é das
+              tropas) + NOMES DOS TIPOS editáveis por jogo (v11, contrato JSON
+              v3) + status em 1/2/3 colunas na tela do herói — 2026-07-25
+
+DAQUI EM DIANTE: seguir docs/ROADMAP.md (v2, APROVADO 2026-07-24) — 14 fases +
+extra de fórmulas, rumo à visão PROD (mapeador de jogos → comparador → contrato
+JSON). Fases 1+2 aprovadas para a próxima sessão. Fase a fase com OK do dono.
 ```
 
 ---
@@ -235,3 +299,6 @@ Sprint 7 🔜 — Polimento + Play Store
 3. **DART_FIRST**: preferir soluções Flutter/Dart puras.
 4. **SEMPRE português** nas respostas.
 5. **MIGRATION_FIRST**: qualquer mudança de schema → incrementar `_kDbVersion` + `onUpgrade`.
+6. **ENXUTO**: resposta no chat segue o caveman `full` (skill CAVE) — código,
+   comentário, doc e memória continuam em português normal. Comando barulhento
+   (flutter test/analyze/build) roda por `bash scripts/enxuto.sh <comando>`.

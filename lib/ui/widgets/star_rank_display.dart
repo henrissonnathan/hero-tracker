@@ -55,7 +55,7 @@ class StarRankDisplay extends StatelessWidget {
               '+${rank.subLevel}/${StarRank.subLevelsPerStar} sub-níveis',
               style: TextStyle(
                 fontSize: 10,
-                color: AppTheme.goldLight.withOpacity(0.8),
+                color: AppTheme.goldLight.withValues(alpha:0.8),
               ),
             ),
           ),
@@ -120,9 +120,9 @@ class _StarPainter extends CustomPainter {
     // Rachaduras — linhas diagonais sobre a parte preenchida
     if (fill > 0 && fill < 1) {
       final crackPaint = Paint()
-        ..color = Colors.black.withOpacity(0.35)
+        ..color = Colors.black.withValues(alpha:0.35)
         ..strokeWidth = 0.8;
-      final segments = StarRank.subLevelsPerStar;
+      const segments = StarRank.subLevelsPerStar;
       final filled = (fill * segments).round();
       for (int i = 1; i < filled; i++) {
         final angle = -math.pi / 2 + (i / segments) * 2 * math.pi;

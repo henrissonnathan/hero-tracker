@@ -9,11 +9,17 @@ class GroupIcon extends StatelessWidget {
   final String? emoji;
   final double size;
 
+  /// Tamanho do emoji quando NÃO há foto. Default: o mesmo [size]. Existe
+  /// para o card de personagem, onde a foto é grande mas o emoji do tipo
+  /// (⚔️/👑) precisa continuar discreto — inclusive quando a foto some.
+  final double? emojiSize;
+
   const GroupIcon({
     super.key,
     this.imagePath,
     this.emoji,
     this.size = 32,
+    this.emojiSize,
   });
 
   @override
@@ -35,5 +41,5 @@ class GroupIcon extends StatelessWidget {
   }
 
   Widget _emojiFallback() =>
-      Text(emoji ?? '⚔️', style: TextStyle(fontSize: size));
+      Text(emoji ?? '⚔️', style: TextStyle(fontSize: emojiSize ?? size));
 }

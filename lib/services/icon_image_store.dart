@@ -4,7 +4,8 @@ import 'dart:ui' as ui;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-/// Guarda ícones de grupo como PNG dentro da pasta interna do app.
+/// Guarda ícones de grupo E fotos de personagem como PNG dentro da pasta
+/// interna do app (os dois dividem a mesma pasta — ver [cleanupOrphans]).
 ///
 /// Segurança: o arquivo escolhido pelo usuário NUNCA entra no app —
 /// as dimensões são lidas ANTES de decodificar (rejeita "bomba de pixels":
@@ -85,6 +86,62 @@ class IconImageStore {
     }
   }
 
+  /// Desenha um avatar simples (fundo colorido + iniciais) e salva como PNG
+  /// interno, igual a uma foto importada. Serve ao EXEMPLO: o dono vê como um
+  /// card fica com foto sem precisar escolher arquivo nenhum — e troca por um
+  /// print do jogo quando quiser.
+  ///
+  /// Best-effort de propósito: qualquer falha (ou demora) devolve null e quem
+  /// chamou apenas fica sem foto — nunca derruba quem está montando dados.
+  static Future<String?> generatePlaceholder(
+      String initials, int argbColor) async {
+    try {
+      return await _drawPlaceholder(initials, argbColor)
+          .timeout(const Duration(seconds: 5), onTimeout: () => null);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static int _genSeq = 0;
+
+  static Future<String?> _drawPlaceholder(
+      String initials, int argbColor) async {
+    const side = 256; // px do PNG gerado
+    const sideF = 256.0; // o mesmo, em double (const não aceita toDouble())
+    const rect = ui.Rect.fromLTWH(0, 0, sideF, sideF);
+
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder, rect);
+    canvas.drawRect(rect, ui.Paint()..color = ui.Color(argbColor));
+
+    final paragraph = (ui.ParagraphBuilder(ui.ParagraphStyle(
+      textAlign: ui.TextAlign.center,
+      fontSize: initials.length <= 2 ? 120 : 78, // 3+ letras não estouram
+      fontWeight: ui.FontWeight.bold,
+    ))
+          ..pushStyle(ui.TextStyle(color: const ui.Color(0xFFFFFFFF)))
+          ..addText(initials))
+        .build()
+      ..layout(const ui.ParagraphConstraints(width: sideF));
+    canvas.drawParagraph(
+        paragraph, ui.Offset(0, (sideF - paragraph.height) / 2));
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(side, side);
+    final png = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    picture.dispose();
+    if (png == null) return null;
+
+    final dir = await _iconsDir();
+    await dir.create(recursive: true);
+    final dest = File(p.join(dir.path,
+        'icon_gen_${DateTime.now().millisecondsSinceEpoch}_${_genSeq++}.png'));
+    await dest.writeAsBytes(png.buffer.asUint8List(), flush: true);
+    return dest.path;
+  }
+
   /// Apaga um ícone interno (ao trocar a foto ou deletar o grupo).
   /// Recusa caminhos fora de group_icons/ — um backup importado/editado
   /// nunca pode direcionar a deleção para um arquivo arbitrário.
@@ -100,9 +157,14 @@ class IconImageStore {
     }
   }
 
-  /// Varredura de órfãos: apaga PNGs de group_icons/ que nenhum grupo
-  /// referencia (sobras de crash/fechamento no meio de um import).
-  /// Chamar no início da sessão, nunca com dialog de grupo aberto.
+  /// Varredura de órfãos: apaga PNGs de group_icons/ que NINGUÉM referencia
+  /// (sobras de crash/fechamento no meio de um import).
+  ///
+  /// ⚠️ [referencedPaths] tem que trazer as fotos de grupo E de personagem —
+  /// as duas moram nesta mesma pasta. Use
+  /// `TrackerRepository.getAllIconImagePathsInUse()`; passar só uma das listas
+  /// apagaria as fotos da outra. Chamar no início da sessão, nunca com dialog
+  /// aberto.
   static Future<void> cleanupOrphans(Iterable<String> referencedPaths) async {
     try {
       final dir = await _iconsDir();

@@ -2,8 +2,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../models/game_group.dart';
 import '../repositories/tracker_repository.dart';
+import '../services/export_service.dart';
 import '../services/icon_image_store.dart';
+import '../services/seed_service.dart';
 import 'game_screen.dart';
+import 'tests_info_screen.dart';
 import 'widgets/group_icon.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -24,17 +27,95 @@ class _HomeScreenState extends State<HomeScreen> {
     _sweepOrphanIcons();
   }
 
-  /// Uma vez por sessão: apaga PNGs de group_icons/ que nenhum grupo usa
-  /// (sobras de crash/fechamento no meio de um import). Roda no boot,
-  /// antes de qualquer dialog de grupo existir.
+  /// Uma vez por sessão: apaga PNGs internos que ninguém usa (sobras de
+  /// crash/fechamento no meio de um import). Roda no boot, antes de qualquer
+  /// dialog existir. A lista precisa vir de getAllIconImagePathsInUse() —
+  /// grupos E personagens dividem a mesma pasta.
   Future<void> _sweepOrphanIcons() async {
-    final used = await TrackerRepository.instance.getAllIconImagePaths();
+    final used = await TrackerRepository.instance.getAllIconImagePathsInUse();
     await IconImageStore.cleanupOrphans(used);
   }
 
   Future<void> _load() async {
     final groups = await TrackerRepository.instance.getRootGroups();
     if (mounted) setState(() { _groups = groups; _loading = false; });
+  }
+
+  // Backup pela tela (Fase 2): exportar/importar em 2 toques.
+  Future<void> _exportData() async {
+    String msg;
+    try {
+      msg = await ExportService.instance.exportAll();
+    } catch (_) {
+      msg = 'Não foi possível salvar o backup (verifique permissão/espaço).';
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _importData() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      dialogTitle: 'Escolher backup do Hero Tracker',
+    );
+    final path = picked?.files.single.path;
+    if (path == null) return; // cancelou
+    final result = await ExportService.instance.importFromFile(path);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(result.message)));
+    if (result.success) _load();
+  }
+
+  // Simula um usuário: monta o mapa de exemplo do Rise of Kingdoms (4
+  // sub-grupos) para analisar o app sem digitar nada. Aditivo e reversível.
+  Future<void> _loadExample() async {
+    final jaExiste = await SeedService.instance.exampleExists();
+    if (!mounted) return;
+    if (jaExiste) {
+      // Refazer APAGA o exemplo atual — inclusive edições feitas nele.
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Refazer o exemplo'),
+          content: const Text(
+              'O exemplo já existe. Refazer APAGA o grupo de exemplo atual e '
+              'tudo dentro dele (inclusive alterações que você tenha feito '
+              'nele) e monta a versão mais nova.\n\n'
+              'Seus outros grupos não são tocados.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar')),
+            TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Refazer',
+                    style: TextStyle(color: Colors.red))),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Montando o mapa de exemplo...')));
+    try {
+      if (jaExiste) await SeedService.instance.removeExample();
+      await SeedService.instance.createExample();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Não foi possível criar o exemplo.')));
+      return;
+    }
+    if (!mounted) return;
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Pronto! Abra "${SeedService.exampleGroupName}" '
+            '— tem 4 sub-grupos dentro.')));
   }
 
   Future<void> _addGroup() async {
@@ -101,6 +182,34 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.add),
             onPressed: _addGroup,
             tooltip: 'Novo grupo',
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Mais opções',
+            onSelected: (v) {
+              if (v == 'example') _loadExample();
+              if (v == 'export') _exportData();
+              if (v == 'import') _importData();
+              if (v == 'tests') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const TestsInfoScreen()),
+                );
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                  value: 'example',
+                  child: Text('Carregar exemplo (dados de teste)')),
+              PopupMenuDivider(),
+              PopupMenuItem(
+                  value: 'export', child: Text('Exportar dados (backup)')),
+              PopupMenuItem(
+                  value: 'import', child: Text('Importar dados')),
+              PopupMenuDivider(),
+              PopupMenuItem(
+                  value: 'tests',
+                  child: Text('Testes do app (o que já é testado)')),
+            ],
           ),
         ],
       ),

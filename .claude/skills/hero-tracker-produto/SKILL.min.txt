@@ -1,0 +1,18 @@
+SKL:hero-tracker-produto|v1|ALWAYS_ON:true(projeto hero-tracker)|SIG:PROD
+FN:visao-do-produto|fonte-da-verdade-do-OBJETIVO|toda-feature/SPEC/roadmap-aponta-para-isto
+TRG:hero-tracker|nova-feature|SPEC|roadmap|duvida-de-escopo|priorizar
+DEP:spec-driven-development;nexus-memory-protocol
+OBJETIVO:app-MAPEADOR-de-jogos → usuário SEM programação mapeia COMO o jogo funciona por dentro (RoK/estratégia primeiro; depois QUALQUER jogo) e usa o mapa para montar/comparar builds. Simples+fácil+intuitivo+dinâmico, 100% offline/local.
+TIPOS_DE_STATUS(cada um mapeia uma coisa do jogo):
+  gatilho→O-QUE-deve-acontecer-para-ter-efeito(ex:defendendo-a-base); lista POR JOGO; REUTILIZÁVEL entre heróis; habilidade usa de 0-a-MUITOS
+  numero→valores-inteiros/reais do jogo: recursos|produção|recursos-atuais|custos-de-pesquisa/construção|tempo
+  porcentagem→bônus-% (ex:+10%-ataque)
+  calculo→fórmulas combinando status (ex: HP = vitalidade × outra-stat)
+HEROIS:mapear gatilhos+bônus por habilidade (2 partes: texto-livre + efeito-configurado) → COMPARAR boosts SOMADOS de heróis EM CONJUNTO (jogos de dupla ou times maiores) para preparar build. Comparador JÁ NESTE app (soma dos boosts do momento).
+ARVORES:interligadas; VÁRIAS por JOGO (cada jogo tem as suas); herói TAMBÉM tem árvores → 1 por TAG-de-tropa dele (ex: defesa|tropa-mista, como talentos de comandante do RoK); custos = parte separada em FORMA de árvore: pré-requisitos-obrigatórios + recursos-usados por item/nível.
+PRESETS:conjuntos prontos reutilizáveis → herói+habilidades | conjunto-de-itens-por-jogo | padrão-comandante(evolui-por-passos+dá-boosts).
+APP_FUTURO:2º app de TESTE/simulação consome os dados deste (testar integração de heróis, cálculo de dano, builds rápido). Canal = JSON documentado c/ LIMITES EXPLÍCITOS + validação rígida (impossível vírus/hack) — tratar o formato como CONTRATO OFICIAL estável; futura integração direta possível.
+RUL:1-simplicidade-acima-de-tudo(sem-programação-para-o-usuário)|2-qualquer-decisão-de-feature-deve-servir-ao-MAPEAMENTO-ou-à-COMPARAÇÃO|3-dados-do-usuário=sagrados(offline,local,formato-seguro)|4-genérico>específico(nada-chumbado-de-um-jogo-só)
+DEC(2026-07-25→09-27):1-atributo-mora-em-quem-o-tem(RoK:ataque/vida=TROPA; comandante=capacidade+bônus%)|2-nome-dos-tipos-é-do-JOGO(renomear-no-app-sem-código; tipo-interno-não-muda)|3-foto-em-herói/tropa-pelo-cofre-seguro(nunca-no-JSON)|4-TOCAR>DIGITAR(dono-tem-dificuldade-de-digitar: tipo-com-explicação, fórmula-montada-tocando, gatilho-reusado-com-1-toque)|5-PACOTE-JSON(modelo+personagens)-importa-DENTRO-de-jogo-existente, mesma-validação-do-contrato, nada-sobrescrito
+ANT:virar-simulador-neste-app=NÃO(simulação-é-o-app-futuro)|conteúdo-curado-por-jogo-mantido-no-app=NÃO(presets-são-do-usuário)|formato-de-dados-instável=BUG
+DET:ver SKILL.md

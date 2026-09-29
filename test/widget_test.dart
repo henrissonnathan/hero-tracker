@@ -1,5 +1,5 @@
-// Smoke test do Hero Tracker: o app sobe, a HomeScreen carrega do banco
-// (sqflite via FFI em ambiente de teste) e mostra a tela inicial.
+// Smokes do Hero Tracker: o app REAL sobe, a HomeScreen carrega do banco
+// (sqflite via FFI) e a StatsScreen agrupa por categoria.
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:hero_tracker/main.dart';
 import 'package:hero_tracker/models/game_group.dart';
 import 'package:hero_tracker/models/group_stat_template.dart';
 import 'package:hero_tracker/models/stat_type.dart';
@@ -15,6 +16,9 @@ import 'package:hero_tracker/repositories/tracker_repository.dart';
 import 'package:hero_tracker/ui/home_screen.dart';
 import 'package:hero_tracker/ui/stats_screen.dart';
 import 'package:hero_tracker/ui/widgets/group_icon.dart';
+import 'package:hero_tracker/ui/widgets/stat_type_visual.dart';
+
+import 'test_helpers.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -46,20 +50,13 @@ void main() {
     }
   });
 
-  testWidgets('HomeScreen carrega do banco e renderiza',
+  testWidgets('smoke de boot: o app REAL (HeroTrackerApp) sobe até a Home',
       (WidgetTester tester) async {
-    // Tema padrão (sem AppTheme/GoogleFonts): fonte em runtime não carrega
-    // em teste — some quando a Nunito for embutida nos assets.
-    // runAsync: o banco abre com I/O real, que não roda no tempo simulado
-    // do ambiente de teste.
-    await tester.runAsync(() async {
-      await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
-      await Future<void>.delayed(const Duration(seconds: 1));
-      await tester.pump();
-    });
-
+    // Tema de teste substitui só a fonte (GoogleFonts sem rede);
+    // árvore de widgets é a REAL do main.dart.
+    await tester.pumpWidget(HeroTrackerApp(theme: ThemeData.dark()));
+    await pumpUntilGone(tester, find.byType(CircularProgressIndicator));
     expect(find.byType(HomeScreen), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
   testWidgets('GroupIcon sem foto mostra o emoji', (WidgetTester tester) async {
@@ -96,14 +93,19 @@ void main() {
           category: 'Recursos'));
     });
 
-    await tester.runAsync(() async {
-      await tester.pumpWidget(MaterialApp(home: StatsScreen(group: group)));
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-      await tester.pump();
-    });
+    await tester.pumpWidget(MaterialApp(home: StatsScreen(group: group)));
+    await pumpUntilFound(tester, find.text('Combate'));
 
     expect(find.text('Combate'), findsOneWidget);
     expect(find.text('Recursos'), findsOneWidget);
-    expect(find.text('Vida · Número'), findsOneWidget);
+    // O status fica DENTRO da sua categoria, com nome, tipo e selo de ícone.
+    final combate = find.ancestor(
+        of: find.text('Combate'), matching: find.byType(Card));
+    expect(find.descendant(of: combate, matching: find.text('Vida')),
+        findsOneWidget);
+    expect(find.descendant(of: combate, matching: find.text('Ouro')),
+        findsNothing);
+    expect(find.text('Número'), findsNWidgets(2));
+    expect(find.byType(StatTypeBadge), findsNWidgets(2));
   });
 }

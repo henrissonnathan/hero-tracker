@@ -10,14 +10,19 @@ void main() {
 }
 
 class HeroTrackerApp extends StatelessWidget {
-  const HeroTrackerApp({super.key});
+  /// Tema opcional para TESTES (o padrão AppTheme.dark usa GoogleFonts, que
+  /// exige rede — indisponível no ambiente de teste até a fonte virar asset
+  /// na Fase 13 do roadmap). Em produção fica sempre null.
+  final ThemeData? theme;
+
+  const HeroTrackerApp({super.key, this.theme});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Hero Tracker',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark,
+      theme: theme ?? AppTheme.dark,
       home: const HomeScreen(),
     );
   }

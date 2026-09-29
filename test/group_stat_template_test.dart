@@ -7,9 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:hero_tracker/models/character.dart';
+import 'package:hero_tracker/models/character_ability.dart';
 import 'package:hero_tracker/models/game_group.dart';
 import 'package:hero_tracker/models/group_stat_template.dart';
+import 'package:hero_tracker/models/skill_node.dart';
 import 'package:hero_tracker/models/stat_type.dart';
+import 'package:hero_tracker/repositories/database_helper.dart';
 import 'package:hero_tracker/repositories/tracker_repository.dart';
 
 void main() {
@@ -167,6 +170,78 @@ void main() {
     final stats = await repo.getStatsByCharacter(character.id!);
     expect(stats.length, 1);
     expect(stats.first.name, 'Vida');
+  });
+
+  test('ciclo de parentId não trava getEffectiveTemplates (Fase 1)', () async {
+    final a = await repo.insertGroup(
+      GameGroup(name: 'Ciclo A', createdAt: DateTime.now()),
+    );
+    final b = await repo.insertGroup(
+      GameGroup(name: 'Ciclo B', parentId: a.id, createdAt: DateTime.now()),
+    );
+    // Força o ciclo A→B→A direto no banco (a UI normal não permite; um
+    // backup adulterado permitiria). O visited-set precisa cortar o laço.
+    final db = await DatabaseHelper.instance.database;
+    await db.update('game_groups', {'parentId': b.id},
+        where: 'id = ?', whereArgs: [a.id]);
+
+    final effective = await repo
+        .getEffectiveTemplates(a.id!)
+        .timeout(const Duration(seconds: 5));
+    expect(effective, isEmpty); // sem templates e SEM travar
+  });
+
+  test('FK sempre ligada: apagar nó pai deixa filho com parentId NULL (Fase 1)',
+      () async {
+    final group = await repo.insertGroup(
+      GameGroup(name: 'Grupo FK', createdAt: DateTime.now()),
+    );
+    final parent = await repo.insertSkillNode(
+      SkillNode(groupId: group.id!, name: 'Pai'),
+    );
+    final child = await repo.insertSkillNode(
+      SkillNode(groupId: group.id!, parentId: parent.id, name: 'Filho'),
+    );
+
+    // Delete cru, sem passar pelo repositório (que ligava a FK manualmente):
+    // com o onConfigure, a FK tem que estar ligada em QUALQUER conexão.
+    final db = await DatabaseHelper.instance.database;
+    await db.delete('skill_nodes', where: 'id = ?', whereArgs: [parent.id]);
+
+    final rows = await db.query('skill_nodes',
+        where: 'id = ?', whereArgs: [child.id]);
+    expect(rows.single['parentId'], isNull,
+        reason: 'ON DELETE SET NULL só roda com foreign_keys = ON');
+  });
+
+  test('habilidade de herói: CRUD e toggle persistem', () async {
+    final group = await repo.insertGroup(
+      GameGroup(name: 'Grupo Habilidades', createdAt: DateTime.now()),
+    );
+    final hero = await repo.insertCharacter(
+      Character(groupId: group.id!, name: 'Herói', createdAt: DateTime.now()),
+    );
+
+    final ability = await repo.insertAbility(CharacterAbility(
+      characterId: hero.id!,
+      name: 'Fúria',
+      description: 'quando em campo dá mais 20 de ataque',
+      triggerText: 'atacando uma base',
+      targetStatName: 'Ataque',
+      bonusValue: 20,
+    ));
+    expect(ability.id, isNotNull);
+    expect(ability.hasEffect, isTrue);
+    expect(ability.bonusLabel, '+20');
+
+    // toggle ativa e persiste
+    await repo.updateAbility(ability.copyWith(isActive: true));
+    var list = await repo.getAbilitiesByCharacter(hero.id!);
+    expect(list.single.isActive, isTrue);
+
+    await repo.deleteAbility(ability.id!);
+    list = await repo.getAbilitiesByCharacter(hero.id!);
+    expect(list, isEmpty);
   });
 
   test('editar ou apagar template não altera stats já copiados (cópia, não referência)',

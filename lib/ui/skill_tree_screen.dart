@@ -227,13 +227,13 @@ class _NodeCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 4),
       color: unlocked
-          ? AppTheme.gold.withOpacity(0.12)
+          ? AppTheme.gold.withValues(alpha:0.12)
           : Theme.of(context).cardTheme.color,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
           color: unlocked
-              ? AppTheme.gold.withOpacity(0.5)
+              ? AppTheme.gold.withValues(alpha:0.5)
               : Colors.transparent,
         ),
       ),
@@ -250,8 +250,8 @@ class _NodeCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: unlocked
-                      ? AppTheme.gold.withOpacity(0.25)
-                      : Colors.grey.withOpacity(0.15),
+                      ? AppTheme.gold.withValues(alpha:0.25)
+                      : Colors.grey.withValues(alpha:0.15),
                   border: Border.all(
                     color: unlocked ? AppTheme.gold : Colors.grey.shade600,
                     width: 2,
@@ -287,7 +287,7 @@ class _NodeCard extends StatelessWidget {
                       '${node.costPoints} pontos',
                       style: TextStyle(
                           fontSize: 11,
-                          color: AppTheme.gold.withOpacity(0.7)),
+                          color: AppTheme.gold.withValues(alpha:0.7)),
                     ),
                 ],
               ),
