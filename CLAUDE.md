@@ -18,7 +18,7 @@ ALWAYS_ON — entram em TODA sessão:
   PROD  | hero-tracker-produto     |   | visão do produto — fonte da verdade do OBJETIVO (mapeador de jogos) — skill DO PROJETO: .claude/skills/hero-tracker-produto/
   GOVN  | skill-governor           |   | decisão-arquitetura | .agents/skills/* | SKILL_MAP.json
   HEAL  | skill-heal               | ⚙ | *.dart | schema-db | .agents/*
-  NEXM  | nexus-memory-protocol    |   | sempre (ignorar DEP: arquitetura-formulario-trproc)
+  NEXM  | nexus-memory-protocol    |   | sempre (ignorar DEP: arquitetura-formulario-web)
   ALOP  | anti-loop-protocol       | ⚙ | *.dart | correção-bug | migration-sqflite | hot-reload-fix
   SDDV  | spec-driven-development  |   | nova-feature | planejar | PRD/SPEC | refactor-grande
   MAPL  | map-leitura              | ⚙ | *.dart | pubspec.yaml | antes de abrir qualquer arquivo
@@ -29,9 +29,9 @@ ALWAYS_ON — entram em TODA sessão:
 
 CONTEXTUAIS — carregam só quando o gatilho dispara:
   skill                          | sigla  | triggers (Dart/Flutter)                     | quando ativa
-  debugging-checklist-trproc     | DEBC ⚙ | bug|erro|exception|stacktrace|quebrou       | corrigir bug: root-cause primeiro, nunca band-aid
+  debugging-checklist-web     | DEBC ⚙ | bug|erro|exception|stacktrace|quebrou       | corrigir bug: root-cause primeiro, nunca band-aid
   verifica-teste                 | VTST ⚙ | flutter-test-FAILED|golden-diff|test/*.dart | teste vermelho → diagnosticar→corrigir→re-rodar (máx 3)
-  testing-patterns-trproc        | TSPT ⚙ | escrever-teste|widget-test|test/*.dart      | padrões de teste: tiers unit/widget/db/regression (lei L5)
+  testing-patterns-web        | TSPT ⚙ | escrever-teste|widget-test|test/*.dart      | padrões de teste: tiers unit/widget/db/regression (lei L5)
   fundamentos-logica-sistema     | LOGC ⚙ | nova-feature|master-detail|regra-de-negócio | modelar lógica antes da sintaxe; transação única sqflite
   database-performance           | DBPF*⚙ | lib/repositories/*.dart|query-sql|lentidão  | anti-N+1, Batch, índices, EXPLAIN QUERY PLAN
   sqlalchemy-2-patterns (→sqflite)| SQL2 ⚙ | rawQuery|sqflite|schema-db|query-em-loop    | SQL seguro (? + whereArgs), db.transaction()/batch()
@@ -57,29 +57,29 @@ CONTEXTUAIS — carregam só quando o gatilho dispara:
   hero-tracker-a11y      | A11Y ⚙ | acessibilidade|a11y|talkback|semantics|contraste|toque-48|wcag    | acessibilidade WCAG AA; sem tocar lógica
   hero-tracker-central   | CENT   | orquestrar|dividir|chats-filhos|handoff|integrar|sprint           | chat central: divide, roteia, integra, commit c/ OK
 
-DESCARTADAS — TRPROC/Flask/web, NÃO carregar no hero-tracker:
+DESCARTADAS — projeto web/Flask/web, NÃO carregar no hero-tracker:
   arquitetura-banco-dados       → schema do CRM Mesa
-  arquitetura-formulario-trproc → cérebro exclusivo do TRPROC
-  arquitetura-mesa-de-trabalho  → camadas/fluxo do CRM
+  arquitetura-formulario-web → cérebro exclusivo do projeto web
+  arquitetura-crm-web  → camadas/fluxo do CRM
   auditoria-sistema             → trilha jurídica LGPD/licitação
-  cadastros-informativos        → módulo cinfo_* do TRPROC
+  cadastros-informativos        → módulo de cadastros do projeto web
   configuracao-pagina           → pipeline SSR Jinja/Flask
   deploy-dokploy                → deploy VPS; app é local
-  dossie-tenant-security        → multi-tenant JWT inexistente
-  iza-sync-patterns             → sync IZA Cloud específica
+  recurso-tenant-security        → multi-tenant JWT inexistente
+  integracao-sync-patterns             → sync com integração externa
   javascript-patterns           → sem JS no projeto
   jinja-patterns                → sem templates HTML
   pergunta-dinamica             → formulários dinâmicos web
   security-regression-suite     → pentest web sem backend
   tenant-security               → sem auth nem tenant
-  trproc-admin-toolkit          → scripts Python do TRPROC
-  trproc-table-master           → tabelas dinâmicas web
+  admin-toolkit-web          → scripts Python do projeto web
+  table-master-web           → tabelas dinâmicas web
   visual-design-system-check    → design web Jinja/CSS
 
 BOOT (adaptação p/ hero-tracker):
   Seguir BOOT_SEQUENCE STEPs 0–4 normalmente.
-  STEP_5 (arquitetura-formulario-trproc, descartada) → substituir pela leitura deste CLAUDE.md.
-  Pilares do boot que NÃO se aplicam: P2 (municipio_id_fk), P13 (upload web), P16 (python-first → aqui é DART_FIRST).
+  STEP_5 (arquitetura-formulario-web, descartada) → substituir pela leitura deste CLAUDE.md.
+  Pilares do boot que NÃO se aplicam: P2 (tenant_id), P13 (upload web), P16 (python-first → aqui é DART_FIRST).
   ORCH/MAPL dependem de CODE_MAP.min.json — gerar com o generator adaptado a lib/ e test/ antes de usar.
 ```
 
